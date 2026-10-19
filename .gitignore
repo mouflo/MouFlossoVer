@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+.env
+
+# Journaux
+*.log
+
+# Données locales du serveur (secrets, base Wikipédia, journaux de rangement, choix d'apparence)
+data/

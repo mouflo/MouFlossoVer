@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Réglages · MouFlossover</title>
+<link rel="icon" type="image/svg+xml" href="/icons/mouflossover.svg"><link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png"><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"><link rel="manifest" href="/icons/manifest.webmanifest"><meta name="theme-color" content="#121315">
+<link rel="stylesheet" href="/ui/mou-ui.css?v={{ version|urlencode }}">
+<script src="/ui/mou-ui.js?v={{ version|urlencode }}" defer></script>
+<link rel="stylesheet" href="/ui/mou-settings.css?v={{ version|urlencode }}">
+<script src="/ui/mou-settings.js?v={{ version|urlencode }}"></script>
+<link rel="stylesheet" href="/ui/apparence.css?v={{ version|urlencode }}">
+<script src="/ui/apparence.js?v={{ version|urlencode }}" defer></script>
+<link rel="stylesheet" href="{{ skin_url(request.args.get('skin') == 'off') }}">
+</head>
+<body>
+<div class="container">
+    <div id="mou-header" data-app="mouflossover" data-prefix="MouFl" data-rest="ossover" data-version="{{ version }}" data-sub="Réglages"></div>
+    <a class="back" href="/">← Retour aux crossovers</a>
+
+    <div class="panel" data-onglet="Connexions">
+        <h2>🔌 Sonarr</h2>
+        <div class="sub">MouFlossover lit la liste de tes séries dans Sonarr et lui dit de ne plus surveiller les épisodes qu'il renomme. La clé se trouve dans Sonarr : Réglages → Général → Clé API.</div>
+        <div class="field"><label for="snUrl">Adresse de Sonarr</label>
+            <input type="text" id="snUrl" autocapitalize="off" spellcheck="false" placeholder="http://192.168.1.133:8989/sonarr"></div>
+        <div class="field"><label for="snKey">Clé API</label>
+            <input type="password" id="snKey" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Laisse vide pour garder la clé actuelle"></div>
+        <div class="state" id="snState"></div>
+        <div class="row"><button class="btn ghost" id="snTest" type="button">Tester</button><button class="btn" id="snSave" type="button">Enregistrer</button></div>
+        <div id="snMsg"></div>
+    </div>
+
+    <div class="panel" data-onglet="Dossiers">
+        <h2>📁 Dossier des séries</h2>
+        <div class="sub">Le dossier d'Emby qui contient un sous-dossier par série. MouFlossover refuse de toucher à un fichier situé en dehors.</div>
+        <div class="field"><label for="pathSeries">Dossier des séries</label>
+            <div class="row nowrap"><input type="text" id="pathSeries" autocapitalize="off" spellcheck="false" placeholder="/mnt/mouflosyno/Emby-Media/Series"><button class="btn ghost" data-browse="pathSeries" type="button">📂 Parcourir</button></div></div>
+        <div class="tabsinfo" id="pathsInfo"></div>
+        <div class="row" style="margin-top:12px"><button class="btn" id="pathsSave" type="button">Enregistrer</button></div>
+        <div id="pathsMsg"></div>
+    </div>
+
+    <div class="panel" data-onglet="Général">
+        <h2>📚 Wikipédia</h2>
+        <div class="sub">MouFlossover garde en mémoire (dans une petite base de données) ce qu'il a lu sur Wikipédia : il ne retélécharge que les pages modifiées depuis la dernière fois. L'analyse tourne en arrière-plan, tu peux continuer à utiliser l'appli.</div>
+        <div class="state" id="wkState"></div>
+        <div class="row"><button class="btn" id="wkScan" type="button">↻ Relire Wikipédia maintenant</button></div>
+        <div id="wkMsg"></div>
+    </div>
+</div>
+<script>
+(async () => {
+    const s = await api('/api/settings/sonarr');
+    $('snUrl').value = s.url || '';
+    $('snState').textContent = s.configured ? 'Clé actuelle : ' + (s.hint || 'définie') : 'Aucune clé définie';
+    const corps = test => ({url: $('snUrl').value, api_key: $('snKey').value, test});
+    $('snTest').addEventListener('click', async () => { say('snMsg', 'Test…', true); const r = await post('/api/settings/sonarr', corps(true)); say('snMsg', r.message || r.error, r.ok); });
+    $('snSave').addEventListener('click', async () => {
+        say('snMsg', 'Vérification…', true); const r = await post('/api/settings/sonarr', corps(false));
+        say('snMsg', r.message || r.error, r.ok);
+        if (r.ok) { $('snKey').value = ''; const n = await api('/api/settings/sonarr'); $('snState').textContent = 'Clé actuelle : ' + (n.hint || 'définie'); }
+    });
+
+    async function chemins() {
+        const p = await api('/api/settings/paths');
+        $('pathSeries').value = p.series || '';
+        $('pathsInfo').textContent = p.series_ok ? (p.writable ? '✅ Dossier accessible, écriture possible.' : '⚠️ Dossier accessible mais en lecture seule : MouFlossover ne pourra rien ranger.') : '❌ Dossier introuvable : le partage réseau est-il monté ?';
+    }
+    await chemins();
+    simpleSave('pathsSave', 'pathsMsg', '/api/settings/paths', () => ({series: $('pathSeries').value}), chemins);
+
+    async function wiki() {
+        const w = await api('/api/wiki');
+        if (w.error) return;
+        $('wkState').textContent = (w.running ? 'Analyse en cours : ' + w.done + ' séries sur ' + w.total + '. ' : 'Dernière analyse : ' + (w.finished ? new Date(w.finished).toLocaleString('fr-FR') : 'pas encore terminée') + '. ')
+            + (w.db ? w.db.series + ' séries en mémoire, ' + w.db.claims + ' renvois trouvés.' : '');
+    }
+    await wiki(); setInterval(wiki, 8000);
+    $('wkScan').addEventListener('click', async () => { const r = await post('/api/wiki/scan', {force: true}); say('wkMsg', r.error || 'Analyse lancée en arrière-plan.', !r.error); wiki(); });
+})();
+</script>
+</body>
+</html>

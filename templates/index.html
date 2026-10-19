@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>MouFlossover</title>
+<link rel="icon" type="image/svg+xml" href="/icons/mouflossover.svg"><link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png"><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"><link rel="manifest" href="/icons/manifest.webmanifest"><meta name="theme-color" content="#121315">
+<link rel="stylesheet" href="/ui/mou-ui.css?v={{ version|urlencode }}">
+<link rel="stylesheet" href="/ui/mouflossover.css?v={{ version|urlencode }}">
+<script src="/ui/mou-ui.js?v={{ version|urlencode }}" defer></script>
+<script src="/ui/mouflossover.js?v={{ version|urlencode }}" defer></script>
+<link rel="stylesheet" href="/ui/apparence.css?v={{ version|urlencode }}">
+<script src="/ui/apparence.js?v={{ version|urlencode }}" defer></script>
+<link rel="stylesheet" href="{{ skin_url(request.args.get('skin') == 'off') }}">
+</head>
+<body class="mou-skin">
+<div class="mf-container">
+    <div id="mou-header" data-app="mouflossover" data-prefix="MouFl" data-rest="ossover" data-version="{{ version }}" data-sub="Crossovers entre séries" data-settings="1"></div>
+
+    <section class="mf-help" id="mfHelp">
+        <button type="button" class="mf-x" id="mfHelpX" title="Masquer" aria-label="Masquer">×</button>
+        <h2>Comment ça marche ?</h2>
+        <p class="mf-lead">Un crossover, c'est une histoire racontée sur plusieurs séries (ex. Chicago Fire, puis Med, puis P.D.). Dans Emby, chaque série doit contenir toutes les parties, dans l'ordre, pour tout regarder (ou copier sur une tablette).</p>
+        <div class="mf-steps">
+            <div class="mf-step"><div class="mf-n">1</div><b>Je repère</b><span>Je compare Sonarr et Wikipédia pour trouver les épisodes qui font partie d'un même crossover.</span></div>
+            <div class="mf-step"><div class="mf-n">2</div><b>Je prépare</b><span>Chaque série reçoit une copie des parties des autres séries, rangées comme épisodes spéciaux au bon endroit, avec titre, résumé et vignette.</span></div>
+            <div class="mf-step"><div class="mf-n">3</div><b>Tu valides</b><span>Rien n'est touché sans ton clic sur « Organiser ». Rien n'est supprimé, et tout peut être annulé.</span></div>
+        </div>
+    </section>
+
+    <div class="mf-toolbar">
+        <label class="mf-search"><span class="mf-lens">🔍</span><input id="mfQ" type="search" placeholder="Rechercher une série ou un titre…" autocomplete="off" spellcheck="false" enterkeyhint="search"></label>
+        <button type="button" class="mou-btn" id="mfRefresh" title="Recalculer l'état de tous les crossovers">↻ Actualiser</button>
+    </div>
+
+    <section class="mf-tabs" id="mfTabs"></section>
+    <div id="mfHint" class="mf-hint"></div>
+    <div class="mf-pills" id="mfPills"></div>
+    <section class="mf-grid" id="mfGrid"><div class="mf-skeleton"></div><div class="mf-skeleton"></div></section>
+</div>
+</body>
+</html>

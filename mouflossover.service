@@ -1,0 +1,16 @@
+[Unit]
+Description=MouFlossover - Crossovers entre séries pour Emby (interface web)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/mouflossover
+ExecStart=/opt/mouflossover/venv/bin/python app.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/var/log/mouflossover.log
+StandardError=append:/var/log/mouflossover.log
+
+[Install]
+WantedBy=multi-user.target
