@@ -7,7 +7,7 @@ MouFlossover repère ces épisodes, prépare le rangement, te le montre, et ne f
 ## Ce que fait l'appli
 
 1. **Je repère** : les titres de Sonarr (« Reckoning (1) », « (2) », « (3) ») et Wikipédia (pour chaque série de ta bibliothèque) servent à retrouver les épisodes d'un même crossover.
-2. **Je prépare** : dans chaque série, l'épisode d'origine reçoit un repère de partie dans son nom (`part1(FIRE)`) et n'est plus surveillé dans Sonarr ; les parties des autres séries sont **copiées** comme épisodes spéciaux (`S00E21`, `S00E22`…) et placées juste avant ou après l'épisode d'origine, grâce aux balises de position des fiches NFO.
+2. **Je prépare** : dans chaque série, l'épisode d'origine reçoit un repère de partie dans son nom (`part1(FIRE)`) et n'est plus surveillé dans Sonarr ; les parties des autres séries sont **copiées** comme épisodes spéciaux (`S00E100`, `S00E101`…) et placées juste avant ou après l'épisode d'origine, grâce aux balises de position des fiches NFO.
 3. **Tu valides** : « Voir ce qui va changer » détaille chaque action. Rien n'est supprimé. Un journal est gardé : **« Annuler le traitement »** remet tout comme avant.
 
 Les copies sont de vrais fichiers séparés (pas des liens), pour que chaque série reste autonome.

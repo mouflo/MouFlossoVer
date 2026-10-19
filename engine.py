@@ -14,7 +14,7 @@ BASE_DIR = Path(__file__).resolve().parent
 DATA = os.environ.get("DATA_DIR", str(BASE_DIR / "data"))
 REFRESH = int(os.environ.get("REFRESH_INTERVAL", "900"))
 
-SLOT_START = 21
+SLOT_START = 100
 WINDOW_DAYS = 1
 
 FRANCHISES = {

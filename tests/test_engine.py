@@ -63,16 +63,16 @@ class TestRangement(unittest.TestCase):
         noms_fire = sorted(p.name for p in fire.iterdir() if p.suffix == ".mkv")
         noms_med = sorted(p.name for p in med.iterdir() if p.suffix == ".mkv")
         self.assertIn("Chicago Fire.S14E13.part1(FIRE)" + RELEASE + ".mkv", noms_fire)
-        self.assertIn("Chicago Fire.S00E21.part2(MED)" + RELEASE + ".mkv", noms_fire)
+        self.assertIn("Chicago Fire.S00E100.part2(MED)" + RELEASE + ".mkv", noms_fire)
         self.assertIn("Chicago Med.S11E13.part2(MED)" + RELEASE + ".mkv", noms_med)
-        self.assertIn("Chicago Med.S00E21.part1(FIRE)" + RELEASE + ".mkv", noms_med)
+        self.assertIn("Chicago Med.S00E100.part1(FIRE)" + RELEASE + ".mkv", noms_med)
 
-        nfo = (fire / ("Chicago Fire.S00E21.part2(MED)" + RELEASE + ".nfo")).read_text(encoding="utf-8")
+        nfo = (fire / ("Chicago Fire.S00E100.part2(MED)" + RELEASE + ".nfo")).read_text(encoding="utf-8")
         self.assertIn("<season>0</season>", nfo)
-        self.assertIn("<episode>21</episode>", nfo)
+        self.assertIn("<episode>100</episode>", nfo)
         self.assertIn("<airsbefore_season>14</airsbefore_season>", nfo)
         self.assertIn("<airsbefore_episode>14</airsbefore_episode>", nfo)
-        nfo_med = (med / ("Chicago Med.S00E21.part1(FIRE)" + RELEASE + ".nfo")).read_text(encoding="utf-8")
+        nfo_med = (med / ("Chicago Med.S00E100.part1(FIRE)" + RELEASE + ".nfo")).read_text(encoding="utf-8")
         self.assertIn("<airsbefore_episode>13</airsbefore_episode>", nfo_med)     # la partie 1 passe avant S11E13
 
         self.assertEqual(engine.make_plan(c)["ops"], [])                           # tout est en place : rien à refaire

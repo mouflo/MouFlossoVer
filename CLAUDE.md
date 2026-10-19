@@ -12,7 +12,7 @@ Appli Flask qui range les crossovers entre séries dans Emby. Dossier `/opt/mouf
 
 ## Règles qui comptent
 - Un rangement renomme et copie de vrais fichiers de la médiathèque : toujours passer par `make_plan` (aperçu) puis `execute` ; chaque action est notée dans `data/manifests/` pour pouvoir l'annuler.
-- Les copies sont des spéciaux `S00E21…` avec `airsbefore_season/episode` dans le NFO. Ne jamais supprimer un fichier : seulement renommer, copier, restaurer.
+- Les copies sont des spéciaux `S00E100…` avec `airsbefore_season/episode` dans le NFO. Ne jamais supprimer un fichier : seulement renommer, copier, restaurer.
 - Avant tout redémarrage : `curl -s http://127.0.0.1:8002/api/occupe` doit répondre `"occupe": false`.
 
 ## Tests
