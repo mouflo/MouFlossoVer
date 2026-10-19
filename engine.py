@@ -70,6 +70,8 @@ SEEDS = [
      "parts": [("station 19", 4, 1, 1), ("grey's anatomy", 17, 1, 2), ("grey's anatomy", 17, 2, 3)]},
     {"name": "Seattle en flammes", "date": "2024-05-23", "page": "Grey's Anatomy : Station 19",
      "parts": [("station 19", 7, 9, 1), ("station 19", 7, 10, 2), ("grey's anatomy", 20, 10, 3)]},
+    {"name": "Flashlight / Puka 'ana", "date": "2017-03-10", "page": "MacGyver (série télévisée, 2016)",
+     "parts": [("macgyver (2016)", 1, 18, 1), ("hawaii five-0", 7, 19, 2)]},
 ]
 
 LOCK = threading.RLock()

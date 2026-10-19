@@ -118,7 +118,10 @@
       ignored: "Tu as mis ces crossovers de côté. Ils ne seront pas traités."
     };
     $('#mfHint').textContent = hints[st.status];
-    var frs = ['Tous'].concat(Array.from(new Set(st.items.map(function (i) { return i.franchise; }))));
+    var noms = {};
+    st.items.forEach(function (i) { if (i.status === st.status) i.parts.forEach(function (p) { noms[p.series] = 1; }); });
+    var frs = ['Tous'].concat(Object.keys(noms).sort(function (a, b) { return a.localeCompare(b, 'fr'); }));
+    if (frs.indexOf(st.fr) < 0) st.fr = 'Tous';
     $('#mfPills').replaceChildren.apply($('#mfPills'), frs.map(function (f) {
       return h('button', {type: 'button', class: 'mf-pill' + (st.fr === f ? ' on' : ''), onclick: function () { st.fr = f; render(); }}, f);
     }).concat([h('span', {class: 'mf-meta', id: 'mfMeta'}, metaText())]));
@@ -126,7 +129,7 @@
     if (!st.loaded) return;
     var q = st.q.toLowerCase();
     var list = st.items.filter(function (i) {
-      return i.status === st.status && (st.fr === 'Tous' || i.franchise === st.fr) &&
+      return i.status === st.status && (st.fr === 'Tous' || i.parts.some(function (p) { return p.series === st.fr; })) &&
         (!q || (i.name + ' ' + i.franchise + ' ' + i.parts.map(function (p) { return p.series + ' ' + p.title; }).join(' ')).toLowerCase().indexOf(q) >= 0);
     });
     var grid = $('#mfGrid');
@@ -284,7 +287,7 @@
     if (!c.applied && c.status !== 'ignored') acts.append(h('button', {type: 'button', class: 'mou-btn ghost small', onclick: function () { corriger(c); }}, c.fixed ? '✏️ Corrigé à la main' : '✏️ Corriger'));
     acts.append(h('button', {type: 'button', class: 'mou-btn ghost small', onclick: async function () { await post('/api/crossovers/' + c.id + '/ignore', {ignored: c.status !== 'ignored'}); load(false); }}, c.status === 'ignored' ? 'Restaurer' : 'Mettre de côté'));
     return h('article', {class: 'mf-card', style: 'animation-delay:' + Math.min(idx * 40, 400) + 'ms'},
-      h('div', {class: 'mf-top'}, h('div', {style: 'flex:1;min-width:0'}, h('h3', {}, c.name), h('div', {class: 'mf-sub'}, fmtDate(c.date), h('span', {class: 'mf-fr'}, c.franchise), c.applied ? h('span', {class: 'mf-chip w'}, 'rangé par MouFlossover') : null)),
+      h('div', {class: 'mf-top'}, h('div', {style: 'flex:1;min-width:0'}, h('h3', {}, c.name), h('div', {class: 'mf-sub'}, fmtDate(c.date), h('span', {class: 'mf-fr'}, Array.from(new Set(c.parts.map(function (p) { return p.series; }))).join(' · ')), c.applied ? h('span', {class: 'mf-chip w'}, 'rangé par MouFlossover') : null)),
         h('span', {class: 'mf-badge ' + c.status}, BADGE[c.status])),
       h('div', {class: 'mf-say ' + c.status}, h('b', {}, s[0]), s[1]),
       h('div', {class: 'mf-cap'}, 'Les parties'), parts, inv, wk, issues, acts, plan);
