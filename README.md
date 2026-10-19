@@ -54,3 +54,19 @@ Version affichée = base manuelle (`BASE_VERSION` dans `app.py`) + nombre de com
 ## Licence
 
 MIT, voir [LICENSE](LICENSE).
+
+
+## Comment les crossovers sont repérés
+
+1. **Titres Sonarr** (venus de TheTVDB) : « … (1) », « … (2) » le même jour dans plusieurs séries d'une même famille.
+2. **Résumés TheTVDB** (lus via Sonarr, analyse quotidienne) : « The crossover continues on Chicago Med S11E13… », « Part 2 of a crossover with Station 19 ».
+3. **Wikipédia fr** (analyse de toute la bibliothèque, gardée dans une base SQLite).
+
+Chaque carte propose les liens pour vérifier, et ✏️ Corriger permet de changer l'ordre ou de retirer une partie.
+
+## Épisode d'une série absente de la bibliothèque
+
+« ➕ Demander l'épisode manquant » ajoute la série dans Sonarr dans un **dossier de passage** (`STAGING_DIR`, par défaut
+`Invites-MouFlossover` à côté du dossier des séries, donc invisible pour Emby), ne surveille que cet épisode, attend son
+arrivée puis le range avec le crossover. Rien n'est supprimé : le fichier reste en place (lien dur, donc le partage
+qBittorrent continue) et la série invitée reste dans Sonarr sans épisode surveillé.

@@ -229,12 +229,13 @@
         h('div', {class: 'mf-tx'}, h('b', {}, 'Partie ' + p.part + ' — ' + p.series), h('small', {}, 'Saison ' + p.season + ', épisode ' + p.ep + ' · « ' + p.title + ' »'),
           h('span', {class: 'mf-chip ' + (p.hasFile ? 'y' : 'n')}, p.hasFile ? 'Fichier présent' : 'Pas encore téléchargé'),
           p.source === 'wikipedia' ? h('span', {class: 'mf-chip w', title: 'Repéré grâce à Wikipédia'}, 'repéré via Wikipédia') : null,
+          p.source === 'tvdb' ? h('span', {class: 'mf-chip w', title: 'Repéré grâce au résumé TheTVDB'}, 'repéré via TheTVDB') : null,
           p.source === 'invite' ? h('span', {class: 'mf-chip w', title: 'Série ajoutée dans le dossier de passage'}, 'épisode invité') : null));
     });
     var issues = [];
     c.blockers.forEach(function (b) { var e = explainBlocker(b); issues.push(h('div', {class: 'mf-issue bad'}, h('b', {}, e.icon + ' ' + e.t), e.d ? h('p', {}, e.d) : null, e.files.length ? h('ul', {}, e.files.map(function (f) { return h('li', {}, f); })) : null)); });
     c.warnings.forEach(function (w) { var e = explainWarning(w); issues.push(h('div', {class: 'mf-issue'}, h('b', {}, 'ℹ️ ' + e.t), e.d ? h('p', {}, e.d) : null)); });
-    var wk = (c.wiki && c.wiki.length) ? h('div', {class: 'mf-wiki'}, h('div', {class: 'mf-cap'}, 'Pour vérifier sur Wikipédia'),
+    var wk = (c.wiki && c.wiki.length) ? h('div', {class: 'mf-wiki'}, h('div', {class: 'mf-cap'}, 'Pour vérifier (Wikipédia, TheTVDB)'),
       c.wiki.map(function (w) {
         return h('div', {class: 'mf-wk'}, h('a', {href: w.url, target: '_blank', rel: 'noopener noreferrer'}, '📖 ' + w.page + ' ↗'),
           h('small', {}, w.extrait ? '« ' + w.extrait + ' »' : 'Page de la série : aucun passage précis trouvé, cherche « crossover » dans la page.'));

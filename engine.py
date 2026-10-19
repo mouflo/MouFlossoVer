@@ -294,6 +294,30 @@ def build_crossovers():
             groups.append({"date": be["airDate"], "name": "", "wiki": [{"page": c["page"], "line": c["line"], "series": s["title"]}], "parts": {
                 (s["id"], ae["seasonNumber"], ae["episodeNumber"]): {"s": s, "e": ae, "part": hint, "src": "wikipedia"},
                 (b["id"], be["seasonNumber"], be["episodeNumber"]): {"s": b, "e": be, "part": None, "src": "wikipedia"}}})
+    import tvdb
+    par_id = {s["id"]: s for s in series}
+    for h in tvdb.indices():
+        a, bser = par_id.get(h["sid"]), par_id.get(h["oid"])
+        if not a or not bser:
+            continue
+        ae = next((x for x in episodes_of(a["id"]) if x["seasonNumber"] == h["season"] and x["episodeNumber"] == h["episode"]), None)
+        if not ae or not ae.get("airDate"):
+            continue
+        be = None
+        if h.get("bs"):
+            be = next((x for x in episodes_of(bser["id"]) if x["seasonNumber"] == h["bs"] and x["episodeNumber"] == h["be"]), None)
+        if not be:
+            ad = datetime.date.fromisoformat(ae["airDate"])
+            proches = [x for x in episodes_of(bser["id"]) if x["seasonNumber"] > 0 and x.get("airDate")
+                       and abs((datetime.date.fromisoformat(x["airDate"]) - ad).days) <= WINDOW_DAYS]
+            be = min(proches, key=lambda x: abs((datetime.date.fromisoformat(x["airDate"]) - ad).days)) if proches else None
+        if not be:
+            continue
+        groups.append({"date": min(ae["airDate"], be.get("airDate") or ae["airDate"]), "name": "",
+                       "wiki": [{"page": "TheTVDB : " + a["title"], "line": h["line"], "series": a["title"],
+                                 "url": "https://thetvdb.com/dereferrer/series/%d" % a["tvdbId"] if a.get("tvdbId") else ""}],
+                       "parts": {(a["id"], ae["seasonNumber"], ae["episodeNumber"]): {"s": a, "e": ae, "part": partie_dite(h["line"]), "src": "tvdb"},
+                                 (bser["id"], be["seasonNumber"], be["episodeNumber"]): {"s": bser, "e": be, "part": None, "src": "tvdb"}}})
     merged = True
     while merged:
         merged = False
@@ -356,10 +380,19 @@ def build_crossovers():
 
 
 def partie_dite(ligne):
-    """« Il s'agit de la deuxième partie… » / « Première partie d'un crossover… » : numéro de la partie de l'épisode
-    de la page (None si la phrase ne le dit pas)."""
-    m = re.search(r"\b(première|deuxième|seconde|troisième|quatrième)\s+partie\b", ligne or "", re.I)
-    return {"première": 1, "deuxième": 2, "seconde": 2, "troisième": 3, "quatrième": 4}[m.group(1).lower()] if m else None
+    """« Il s'agit de la deuxième partie… » / « Part 2 of a crossover… » / « the second part of a major crossover » :
+    numéro de la partie de l'épisode dont parle la phrase (None si elle ne le dit pas)."""
+    t = ligne or ""
+    m = re.search(r"\b(première|deuxième|seconde|troisième|quatrième)\s+partie\b", t, re.I)
+    if m:
+        return {"première": 1, "deuxième": 2, "seconde": 2, "troisième": 3, "quatrième": 4}[m.group(1).lower()]
+    m = re.search(r"\b(first|second|third|fourth)\s+part\b", t, re.I)
+    if m:
+        return {"first": 1, "second": 2, "third": 3, "fourth": 4}[m.group(1).lower()]
+    m = re.search(r"\bpart\s+(one|two|three|four|[1-4])\b", t, re.I)
+    if m:
+        return {"one": 1, "two": 2, "three": 3, "four": 4}.get(m.group(1).lower()) or int(m.group(1))
+    return None
 
 
 def wiki_url(page):
@@ -386,7 +419,7 @@ def wiki_sources(c):
     for w in c.get("wiki", []):
         if w["page"] not in vues:
             vues.add(w["page"])
-            out.append({"page": w["page"], "url": wiki_url(w["page"]), "extrait": lisible(w.get("line", "")), "serie": w.get("series", "")})
+            out.append({"page": w["page"], "url": w.get("url") or wiki_url(w["page"]), "extrait": lisible(w.get("line", "")), "serie": w.get("series", "")})
     if not out:
         for v in c["parts"].values():
             page = WIKI.page_of(v["s"]["title"])
@@ -774,4 +807,6 @@ def start_background():
     threading.Thread(target=refresh, daemon=True).start()
     threading.Thread(target=boucle, daemon=True).start()
     invites.demarrer()
+    import tvdb
+    tvdb.demarrer()
     threading.Thread(target=lambda: (time.sleep(20), wiki_scan()), daemon=True).start()

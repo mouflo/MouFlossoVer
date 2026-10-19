@@ -86,3 +86,23 @@ class TestPartieDite(unittest.TestCase):
         self.assertEqual(engine.partie_dite("Il s'agit de la deuxième partie de l'épisode 7 de la saison 6 de Grey's Anatomy station 19."), 2)
         self.assertEqual(engine.partie_dite("Première partie d'un crossover qui se poursuit avec l'épisode 13"), 1)
         self.assertIsNone(engine.partie_dite("L'épisode 12 marque un crossover avec NCIS"))
+
+
+class TestTvdb(unittest.TestCase):
+    def test_indices_de_resume(self):
+        import tvdb
+        series = [{"id": 1, "title": "Chicago Fire"}, {"id": 2, "title": "Chicago Med"}, {"id": 3, "title": "Intelligence (2020)"}]
+        noms = tvdb.noms_cherchables(series)
+        eps = [{"seasonNumber": 14, "episodeNumber": 13, "overview": "The crossover continues on Chicago Med S11E13 Reckoning (2) and Chicago P.D."},
+               {"seasonNumber": 1, "episodeNumber": 1, "overview": "An airfield emergency involving the Intelligence Unit."},
+               {"seasonNumber": 0, "episodeNumber": 1, "overview": "Crossover with Chicago Med."}]
+        h = tvdb.indices_de(series[0], eps, noms)
+        self.assertEqual(len(h), 1)
+        self.assertEqual((h[0]["oid"], h[0]["bs"], h[0]["be"]), (2, 11, 13))
+        h2 = tvdb.indices_de({"id": 9, "title": "NCIS"}, [{"seasonNumber": 14, "episodeNumber": 15, "overview": "Crossover with Chicago Med season 3 episode 14."}], noms)
+        self.assertEqual((h2[0]["bs"], h2[0]["be"]), (3, 14))
+
+    def test_partie_en_anglais(self):
+        self.assertEqual(engine.partie_dite("Part 2 of a crossover with Station 19."), 2)
+        self.assertEqual(engine.partie_dite("This is the third part of a major crossover"), 3)
+        self.assertIsNone(engine.partie_dite("The crossover continues on Chicago Med"))
