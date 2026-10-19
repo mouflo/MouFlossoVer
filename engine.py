@@ -431,7 +431,7 @@ def make_plan(c):
             if existing:
                 est = stem_of(existing)
                 sm = re.search(r"S00E(\d+)", existing)
-                if sm:
+                if sm and int(sm.group(1)) >= SLOT_START:
                     ni = nfo_info(os.path.join(sdir, est + ".nfo"))
                     need = not ni or "<airsbefore_season>%d</airsbefore_season>" % airs[0] not in ni["text"] \
                         or "<airsbefore_episode>%d</airsbefore_episode>" % airs[1] not in ni["text"]
