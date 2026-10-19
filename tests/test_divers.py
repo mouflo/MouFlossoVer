@@ -71,3 +71,11 @@ class TestNCIS(unittest.TestCase):
         self.assertEqual(engine.tag_of("Foo: Bar"), "BAR")
         self.assertEqual(engine.tag_of("Law & Order: Special Victims Unit"), "SVU")
         self.assertEqual(engine.franchise_key("NCIS: Sydney"), "ncis")
+
+
+class TestPosition(unittest.TestCase):
+    def test_position_emby_ou_nous(self):
+        self.assertTrue(engine.position_ok("<airsbefore_season>7</airsbefore_season><airsbefore_episode>10</airsbefore_episode>", (7, 10)))
+        self.assertTrue(engine.position_ok("<displayepisode>10</displayepisode>\n<displayseason>7</displayseason>", (7, 10)))
+        self.assertFalse(engine.position_ok("<displayepisode>11</displayepisode><displayseason>7</displayseason>", (7, 10)))
+        self.assertFalse(engine.position_ok("<title>x</title>", (7, 10)))
