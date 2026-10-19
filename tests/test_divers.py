@@ -50,6 +50,7 @@ class TestLiens(unittest.TestCase):
         brut = "  | commentaire = Première partie d'un [[crossover (fiction)|crossover]] qui se poursuit avec [[Saison 11 de Chicago Med|la saison 11]]."
         self.assertEqual(engine.lisible(brut), "Première partie d'un crossover qui se poursuit avec la saison 11.")
         self.assertEqual(engine.lisible("#: → Début d'un ''crossover''"), "Début d'un crossover")
+        self.assertEqual(engine.lisible("avec la [[Saison 13 de Chica"), "avec la")
 
     def test_sources_dedoublonnees(self):
         c = {"wiki": [{"page": "P", "line": "a", "series": "X"}, {"page": "P", "line": "b", "series": "Y"}], "parts": {}}
