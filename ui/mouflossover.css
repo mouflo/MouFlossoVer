@@ -85,3 +85,10 @@ body.mou-skin button.mf-pill.on { background:var(--accent); border-color:var(--a
     .mf-tabs { grid-template-columns:repeat(2,1fr); }
     .mf-container { padding:10px 10px 70px; }
 }
+
+/* Liens Wikipédia pour vérifier */
+.mf-wiki { margin-top:10px; }
+.mf-wk { background:var(--surface2); border-radius:6px; padding:8px 12px; margin-bottom:6px; }
+.mf-wk a { color:var(--accent); font-weight:600; text-decoration:none; overflow-wrap:anywhere; }
+.mf-wk a:hover { text-decoration:underline; }
+.mf-wk small { display:block; color:var(--muted); font-size:.78rem; margin-top:3px; line-height:1.4; overflow-wrap:anywhere; }

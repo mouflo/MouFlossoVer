@@ -9,6 +9,7 @@ RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE))
 os.environ.setdefault("DATA_DIR", tempfile.mkdtemp())
 import apparence  # noqa: E402
+import engine  # noqa: E402
 import wiki  # noqa: E402
 
 
@@ -38,6 +39,21 @@ class TestWikipedia(unittest.TestCase):
     def test_noms_de_series(self):
         self.assertEqual(wiki.norm("Chicago P.D."), wiki.norm("Chicago PD"))
         self.assertEqual(wiki.norm("Chicago Police Department"), wiki.norm("Chicago P.D."))
+
+
+class TestLiens(unittest.TestCase):
+    def test_lien_wikipedia(self):
+        self.assertEqual(engine.wiki_url("Saison 14 de Chicago Fire"), "https://fr.wikipedia.org/wiki/Saison_14_de_Chicago_Fire")
+        self.assertEqual(engine.wiki_url("FBI (série télévisée)"), "https://fr.wikipedia.org/wiki/FBI_(s%C3%A9rie_t%C3%A9l%C3%A9vis%C3%A9e)")
+
+    def test_passage_lisible(self):
+        brut = "  | commentaire = Première partie d'un [[crossover (fiction)|crossover]] qui se poursuit avec [[Saison 11 de Chicago Med|la saison 11]]."
+        self.assertEqual(engine.lisible(brut), "Première partie d'un crossover qui se poursuit avec la saison 11.")
+        self.assertEqual(engine.lisible("#: → Début d'un ''crossover''"), "Début d'un crossover")
+
+    def test_sources_dedoublonnees(self):
+        c = {"wiki": [{"page": "P", "line": "a", "series": "X"}, {"page": "P", "line": "b", "series": "Y"}], "parts": {}}
+        self.assertEqual([w["page"] for w in engine.wiki_sources(c)], ["P"])
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ Aucun serveur web ici : app.py expose ces fonctions. Les réglages (adresse et c
 sont relus à chaque appel dans l'environnement, qui vient de data/secrets.env.
 """
 import datetime, glob, hashlib, json, os, re, shutil, sys, threading, time, traceback, uuid
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -28,15 +29,15 @@ PART_RX = re.compile(r"\((\d)\)\s*$")
 TAG_RX = re.compile(r"\.part(\d)\.?\(([A-Za-z0-9]+)\)")
 PARTANY_RX = re.compile(r"[.-]part(?:ie)?(\d)\.?(?:\(([A-Za-z0-9]+)\))?")
 SEEDS = [
-    {"name": "American Dreams", "date": "2020-03-24",
+    {"name": "American Dreams", "date": "2020-03-24", "page": "FBI (série télévisée)",
      "parts": [("fbi", 2, 18, 1), ("fbi: most wanted", 1, 9, 2)]},
-    {"name": "Budapest / Exposed", "date": "2021-09-21",
+    {"name": "Budapest / Exposed", "date": "2021-09-21", "page": "FBI (série télévisée)",
      "parts": [("fbi", 4, 1, 1), ("fbi: most wanted", 3, 1, 2), ("fbi: international", 1, 1, 3)]},
-    {"name": "Imminent Threat", "date": "2023-04-04",
+    {"name": "Imminent Threat", "date": "2023-04-04", "page": "FBI (série télévisée)",
      "parts": [("fbi: international", 2, 16, 1), ("fbi", 5, 17, 2), ("fbi: most wanted", 4, 16, 3)]},
-    {"name": "Nothing Seems the Same", "date": "2020-11-12",
+    {"name": "Nothing Seems the Same", "date": "2020-11-12", "page": "Grey's Anatomy : Station 19",
      "parts": [("station 19", 4, 1, 1), ("grey's anatomy", 17, 1, 2), ("grey's anatomy", 17, 2, 3)]},
-    {"name": "Seattle en flammes", "date": "2024-05-23",
+    {"name": "Seattle en flammes", "date": "2024-05-23", "page": "Grey's Anatomy : Station 19",
      "parts": [("station 19", 7, 9, 1), ("station 19", 7, 10, 2), ("grey's anatomy", 20, 10, 3)]},
 ]
 
@@ -203,7 +204,8 @@ def build_crossovers():
             if e:
                 resolved[(s["id"], season, ep)] = {"s": s, "e": e, "part": None, "src": "wikipedia"}
         if len(resolved) >= 2:
-            groups.append({"date": sd["date"], "parts": resolved, "name": sd["name"]})
+            groups.append({"date": sd["date"], "parts": resolved, "name": sd["name"],
+                           "wiki": [{"page": sd["page"], "line": "", "series": ""}]})
     for s in series:
         rec = WIKI.get(s["title"])
         if not rec:
@@ -221,7 +223,7 @@ def build_crossovers():
             if not near:
                 continue
             ae = min(near, key=lambda x: abs((datetime.date.fromisoformat(x["airDate"]) - bd).days))
-            groups.append({"date": be["airDate"], "name": "", "parts": {
+            groups.append({"date": be["airDate"], "name": "", "wiki": [{"page": c["page"], "line": c["line"], "series": s["title"]}], "parts": {
                 (s["id"], ae["seasonNumber"], ae["episodeNumber"]): {"s": s, "e": ae, "part": None, "src": "wikipedia"},
                 (b["id"], be["seasonNumber"], be["episodeNumber"]): {"s": b, "e": be, "part": None, "src": "wikipedia"}}})
     merged = True
@@ -236,6 +238,7 @@ def build_crossovers():
                             groups[i]["parts"][k] = v
                     groups[i]["date"] = min(groups[i]["date"], groups[j]["date"])
                     groups[i]["name"] = groups[i]["name"] or groups[j]["name"]
+                    groups[i]["wiki"] = groups[i].get("wiki", []) + groups[j].get("wiki", [])
                     del groups[j]
                     merged = True
                     break
@@ -254,9 +257,42 @@ def build_crossovers():
         first = min(g["parts"].values(), key=lambda v: v["part"])
         name = g["name"] or PART_RX.sub("", first["e"].get("title") or "").strip() or "Crossover"
         cid = hashlib.sha1("|".join(sorted("%d-%d-%d" % k for k in g["parts"])).encode()).hexdigest()[:10]
-        items.append({"id": cid, "franchise": fr, "date": g["date"], "parts": g["parts"], "name": name})
+        items.append({"id": cid, "franchise": fr, "date": g["date"], "parts": g["parts"], "name": name, "wiki": g.get("wiki", [])})
     items.sort(key=lambda c: c["date"], reverse=True)
     return items, series
+
+
+def wiki_url(page):
+    return "https://fr.wikipedia.org/wiki/" + urllib.parse.quote(page.replace(" ", "_"), safe="()',:!")
+
+
+def lisible(ligne, maxi=190):
+    """Passage de Wikipédia sans le code de la page : liens [[a|b]] → b, préfixes de liste et « commentaire = » retirés."""
+    t = re.sub(r"\[\[(?:[^\]|]*\|)?([^\]]*)\]\]", r"\1", ligne or "")
+    t = re.sub(r"'{2,}", "", t)
+    t = re.sub(r"^[\s|#*:→-]+", "", t)
+    t = re.sub(r"^(commentaire|titre)\s*=\s*", "", t, flags=re.I)
+    t = re.sub(r"\s+", " ", t).strip()
+    if len(t) > maxi:
+        t = t[:maxi].rsplit(" ", 1)[0] + "…"
+    return t
+
+
+def wiki_sources(c):
+    """Pages Wikipédia à ouvrir pour vérifier un crossover : la page et le passage qui le mentionne ;
+    à défaut, la page de chaque série concernée."""
+    vues, out = set(), []
+    for w in c.get("wiki", []):
+        if w["page"] not in vues:
+            vues.add(w["page"])
+            out.append({"page": w["page"], "url": wiki_url(w["page"]), "extrait": lisible(w.get("line", "")), "serie": w.get("series", "")})
+    if not out:
+        for v in c["parts"].values():
+            page = WIKI.page_of(v["s"]["title"])
+            if page and page not in vues:
+                vues.add(page)
+                out.append({"page": page, "url": wiki_url(page), "extrait": "", "serie": v["s"]["title"]})
+    return out[:6]
 
 
 def part_list(c):
@@ -406,7 +442,7 @@ def refresh():
                 out.append({"id": c["id"], "name": c["name"], "franchise": c["franchise"], "date": c["date"],
                             "status": status, "parts": [{k: v for k, v in p.items() if k != "path"} for p in parts],
                             "opCount": len(plan["ops"]), "blockers": plan["blockers"], "warnings": plan["warnings"],
-                            "applied": c["id"] in st["done"]})
+                            "applied": c["id"] in st["done"], "wiki": wiki_sources(c)})
             CACHE.update({"items": out, "updated": datetime.datetime.now().isoformat(timespec="seconds"), "error": None})
         except Exception as ex:
             traceback.print_exc()

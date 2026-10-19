@@ -235,6 +235,11 @@ class Wiki:
             rows = self.db.execute("SELECT b, bn, season, episode, page, line FROM wiki_claims WHERE series=?", (series,)).fetchall()
         return {"claims": [{"b": r[0], "bn": r[1], "season": r[2], "episode": r[3], "page": r[4], "line": r[5]} for r in rows]} if rows else None
 
+    def page_of(self, series):
+        with self.lock:
+            r = self.db.execute("SELECT page FROM wiki_series WHERE series=?", (series,)).fetchone()
+        return r[0] if r and r[0] else None
+
     def invalidate(self, series):
         with self.lock:
             self.db.execute("UPDATE wiki_series SET scanned_at=0 WHERE series=?", (series,))

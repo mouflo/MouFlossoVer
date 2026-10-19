@@ -151,6 +151,11 @@
     var issues = [];
     c.blockers.forEach(function (b) { var e = explainBlocker(b); issues.push(h('div', {class: 'mf-issue bad'}, h('b', {}, e.icon + ' ' + e.t), e.d ? h('p', {}, e.d) : null, e.files.length ? h('ul', {}, e.files.map(function (f) { return h('li', {}, f); })) : null)); });
     c.warnings.forEach(function (w) { var e = explainWarning(w); issues.push(h('div', {class: 'mf-issue'}, h('b', {}, 'ℹ️ ' + e.t), e.d ? h('p', {}, e.d) : null)); });
+    var wk = (c.wiki && c.wiki.length) ? h('div', {class: 'mf-wiki'}, h('div', {class: 'mf-cap'}, 'Pour vérifier sur Wikipédia'),
+      c.wiki.map(function (w) {
+        return h('div', {class: 'mf-wk'}, h('a', {href: w.url, target: '_blank', rel: 'noopener noreferrer'}, '📖 ' + w.page + ' ↗'),
+          h('small', {}, w.extrait ? '« ' + w.extrait + ' »' : 'Page de la série : aucun passage précis trouvé, cherche « crossover » dans la page.'));
+      })) : null;
     var acts = h('div', {class: 'mf-actions'});
     if (c.status === 'todo') acts.append(h('button', {type: 'button', class: 'mou-btn', onclick: async function () {
       var body = h('div', {}, h('p', {class: 'mou-msub'}, '« ' + c.name + ' » : ' + c.opCount + ' action(s) vont être exécutées sur tes fichiers (renommages, copies, informations Emby, réglage Sonarr).'),
@@ -181,7 +186,7 @@
       h('div', {class: 'mf-top'}, h('div', {style: 'flex:1;min-width:0'}, h('h3', {}, c.name), h('div', {class: 'mf-sub'}, fmtDate(c.date), h('span', {class: 'mf-fr'}, c.franchise), c.applied ? h('span', {class: 'mf-chip w'}, 'rangé par MouFlossover') : null)),
         h('span', {class: 'mf-badge ' + c.status}, BADGE[c.status])),
       h('div', {class: 'mf-say ' + c.status}, h('b', {}, s[0]), s[1]),
-      h('div', {class: 'mf-cap'}, 'Les parties'), parts, issues, acts, plan);
+      h('div', {class: 'mf-cap'}, 'Les parties'), parts, wk, issues, acts, plan);
   }
 
   async function loadWiki() {
