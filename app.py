@@ -220,6 +220,7 @@ def api_telecharger(eid):
             ep["monitored"] = True
             engine.sonarr("PUT", "/episode/%d" % eid, ep)
         engine.sonarr("POST", "/command", {"name": "EpisodeSearch", "episodeIds": [eid]})
+        engine.noter_demande(eid)
     except Exception as ex:
         return jsonify({"ok": False, "error": "Sonarr ne répond pas : %s" % ex}), 502
     return jsonify({"ok": True})

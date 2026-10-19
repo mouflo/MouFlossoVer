@@ -445,6 +445,48 @@ def wiki_sources(c):
     return out[:6]
 
 
+_QCACHE = {"t": 0, "d": {}}
+
+
+def file_dl():
+    """Téléchargements en cours chez Sonarr (épisode -> avancement), relus au plus toutes les 15 s."""
+    if time.time() - _QCACHE["t"] > 15:
+        d = {}
+        try:
+            for r in (sonarr("GET", "/queue?pageSize=200") or {}).get("records", []):
+                taille = r.get("size") or 0
+                d[r.get("episodeId")] = {"pct": int(100 * (taille - (r.get("sizeleft") or 0)) / taille) if taille else 0,
+                                         "status": r.get("status"), "avert": r.get("trackedDownloadStatus") == "warning"}
+        except Exception:
+            d = _QCACHE["d"]
+        _QCACHE.update(t=time.time(), d=d)
+    return _QCACHE["d"]
+
+
+def dl_etat(eid, a_fichier):
+    """Phrase d'état d'un épisode demandé mais pas encore là (None si rien à dire)."""
+    if a_fichier:
+        return None
+    q = file_dl().get(eid)
+    if q:
+        if q["status"] == "completed":
+            return "Téléchargé : Sonarr est en train de le ranger"
+        if q["status"] == "warning" or q["avert"]:
+            return "Téléchargement bloqué (aucune source pour l'instant) : %d %%" % q["pct"]
+        return "Téléchargement en cours : %d %%" % q["pct"]
+    dem = load_state().get("demandes", {}).get(str(eid))
+    if dem:
+        return "Recherche lancée à %s : aucune version trouvée pour l'instant, nouvel essai automatique toutes les 6 h" % time.strftime("%H:%M", time.localtime(dem["t"]))
+    return None
+
+
+def noter_demande(eid):
+    with LOCK:
+        st = load_state()
+        st.setdefault("demandes", {})[str(eid)] = {"t": int(time.time()), "last": int(time.time())}
+        save_state(st)
+
+
 def part_list(c):
     out = []
     for k, v in sorted(c["parts"].items(), key=lambda kv: (kv[1]["part"], kv[1]["s"]["title"])):
@@ -453,7 +495,8 @@ def part_list(c):
                     "season": e["seasonNumber"], "ep": e["episodeNumber"], "title": e.get("title") or "",
                     "part": v["part"], "hasFile": bool(e.get("hasFile")), "episodeId": e["id"],
                     "monitored": bool(e.get("monitored")), "source": v["src"], "path": s["path"],
-                    "overview": e.get("overview") or "", "airDate": e.get("airDate") or ""})
+                    "overview": e.get("overview") or "", "airDate": e.get("airDate") or "",
+                    "dl": dl_etat(e["id"], bool(e.get("hasFile")))})
     return out
 
 

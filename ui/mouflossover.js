@@ -242,7 +242,8 @@
           p.source === 'wikipedia' ? h('span', {class: 'mf-chip w', title: 'Repéré grâce à Wikipédia'}, 'repéré via Wikipédia') : null,
           p.source === 'tvdb' ? h('span', {class: 'mf-chip w', title: 'Repéré grâce au résumé TheTVDB'}, 'repéré via TheTVDB') : null,
           p.source === 'invite' ? h('span', {class: 'mf-chip w', title: 'Série ajoutée dans le dossier de passage'}, 'épisode invité') : null,
-          (!p.hasFile && p.source !== 'invite' && !/Invites/i.test(p.path || '')) ? h('button', {type: 'button', class: 'mou-btn ghost small mf-dl', onclick: async function (ev) {
+          p.dl ? h('span', {class: 'mf-chip w'}, '⏳ ' + p.dl) : null,
+          (!p.hasFile && !p.dl && p.source !== 'invite' && !/Invites/i.test(p.path || '')) ? h('button', {type: 'button', class: 'mou-btn ghost small mf-dl', onclick: async function (ev) {
             var b = ev.currentTarget; b.disabled = true;
             var r = await post('/api/episodes/' + p.episodeId + '/telecharger');
             toast(r.ok ? 'Recherche lancée chez vos indexeurs : « Actualiser » quand il sera téléchargé.' : (r.error || 'Échec'), r.ok ? 'ok' : 'err');

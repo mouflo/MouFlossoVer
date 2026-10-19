@@ -160,6 +160,24 @@ def _un_pas(gid):
         threading.Thread(target=engine.refresh, daemon=True).start()
 
 
+def relancer_demandes():
+    """Épisodes demandés par le bouton « Télécharger » : nouvelle recherche toutes les 6 h tant qu'ils ne sont pas là."""
+    maintenant = time.time()
+    for eid, d in list(engine.load_state().get("demandes", {}).items()):
+        if maintenant - d.get("last", 0) < RECHERCHE_TOUTES_LES:
+            continue
+        ep = engine.sonarr("GET", "/episode/%s" % eid)
+        with engine.LOCK:
+            st = engine.load_state()
+            if not ep or ep.get("hasFile"):
+                st.get("demandes", {}).pop(eid, None)
+            elif eid in st.get("demandes", {}):
+                st["demandes"][eid]["last"] = int(maintenant)
+            engine.save_state(st)
+        if ep and not ep.get("hasFile") and int(eid) not in engine.file_dl():
+            engine.sonarr("POST", "/command", {"name": "EpisodeSearch", "episodeIds": [int(eid)]})
+
+
 def boucle():
     """Fait avancer toutes les demandes, toutes les minutes, tant que l'appli tourne."""
     while True:
@@ -169,6 +187,7 @@ def boucle():
             for g in _guests():
                 if g["status"] not in ETATS_FINAUX and maintenant >= g.get("next_try", 0):
                     _un_pas(g["id"])
+            relancer_demandes()
         except Exception:
             logger.exception("Boucle des épisodes invités")
 
