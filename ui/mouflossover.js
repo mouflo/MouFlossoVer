@@ -20,7 +20,8 @@
       if (k === 'class') e.className = v;
       else if (k.indexOf('on') === 0) e.addEventListener(k.slice(2), v);
       else if (k === 'style') e.style.cssText = v;
-      else e.setAttribute(k, v);
+      else if (v === false || v == null) return;
+      else e.setAttribute(k, v === true ? "" : v);
     });
     for (var i = 2; i < arguments.length; i++) {
       [].concat(arguments[i]).forEach(function (k) { if (k != null && k !== false) e.append(k.nodeType ? k : document.createTextNode(k)); });
