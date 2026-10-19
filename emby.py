@@ -56,8 +56,10 @@ def actualiser(chemins_series):
             if not it:
                 absents.append(dossier)
                 continue
-            _call("POST", "/Items/%s/Refresh" % it["Id"], {"Recursive": "true", "MetadataRefreshMode": "FullRefresh",
-                                                           "ImageRefreshMode": "Default", "ReplaceAllMetadata": "false",
+            # « ValidationOnly » : Emby repère seulement les fichiers nouveaux ou modifiés. Surtout PAS « FullRefresh » :
+            # il réécrit alors les fiches NFO de toute la série (et peut remplacer des titres par des noms de fichiers).
+            _call("POST", "/Items/%s/Refresh" % it["Id"], {"Recursive": "true", "MetadataRefreshMode": "ValidationOnly",
+                                                           "ImageRefreshMode": "ValidationOnly", "ReplaceAllMetadata": "false",
                                                            "ReplaceAllImages": "false"})
             faits.append(it.get("Name") or dossier)
         msg = "Emby relit : " + ", ".join(faits) + "." if faits else "Emby : aucune série retrouvée."

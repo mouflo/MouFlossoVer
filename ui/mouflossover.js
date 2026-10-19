@@ -183,13 +183,20 @@
     }
     q.addEventListener('input', function () { clearTimeout(t); t = setTimeout(function () { if (q.value.trim().length > 1) chercher(q.value.trim()); }, 500); });
     var sg = await api('/api/crossovers/' + c.id + '/suggestions');
+    etat.textContent = (sg.items || []).length ? "Rempli d'après la suggestion ci-dessous, tu peux le modifier." : '';
     (sg.items || []).forEach(function (x) {
-      sug.append(h('button', {type: 'button', class: 'mou-btn ghost mf-pick', onclick: async function () { q.value = x.title; sa.value = x.season; ep.value = x.episode; var li = await chercher(x.title); if (li[0]) { chosen = li[0]; etat.textContent = 'Série choisie : ' + li[0].title + (li[0].year ? ' (' + li[0].year + ')' : ''); montrer(li); } }},
+      sug.append(h('button', {type: 'button', class: 'mou-btn ghost mf-pick', onclick: function () { appliquer(x); }},
         h('b', {}, 'Wikipédia cite : ' + x.title + ' — saison ' + x.season + ', épisode ' + x.episode), h('small', {}, x.line || '')));
     });
+    async function appliquer(x) {
+      q.value = x.title; sa.value = x.season; ep.value = x.episode;
+      var li = await chercher(x.title);
+      if (li[0]) { chosen = li[0]; etat.textContent = 'Série choisie : ' + li[0].title + (li[0].year ? ' (' + li[0].year + ')' : ''); montrer(li); }
+    }
     var body = h('div', {}, h('p', {class: 'mou-msub'}, "L'appli ajoute la série dans Sonarr dans un dossier de passage (invisible pour Emby, aucun autre épisode ne sera téléchargé), demande cet épisode, attend son arrivée puis le range avec le crossover. Le fichier n'est jamais supprimé : qBittorrent continue de le partager."),
       sug.children.length ? h('div', {}, h('div', {class: 'mf-cap'}, 'Suggestions'), sug) : null,
-      h('div', {class: 'mf-cap'}, 'Série'), q, res, h('div', {class: 'mf-cap'}, 'Saison et épisode'), h('div', {style: 'display:flex;gap:8px'}, sa, ep), etat);
+      h('div', {class: 'mf-cap'}, 'Série'), q, res, h('div', {class: 'mf-cap'}, 'Saison et épisode'), h('div', {style: 'display:grid;grid-template-columns:1fr 1fr;gap:8px'}, sa, ep), etat);
+    if ((sg.items || []).length) appliquer(sg.items[0]);       // rempli d'office avec la 1re suggestion, modifiable
     if (!await dlg("Demander l'épisode manquant", body, 'Demander cet épisode')) return;
     if (!chosen) { toast("Choisis d'abord une série dans la liste.", 'err'); return; }
     var r = await post('/api/crossovers/' + c.id + '/invite', {tvdbId: chosen.tvdbId, title: chosen.title, season: parseInt(sa.value, 10), episode: parseInt(ep.value, 10)});
