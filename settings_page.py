@@ -95,6 +95,27 @@ def init_app(app, base_dir, version_fn, engine):
         os.environ["EMBY_URL"], os.environ["EMBY_API_KEY"] = url, cle
         return jsonify({"ok": True, "message": msg + " Enregistré."})
 
+    @app.route("/api/settings/alertes")
+    def alertes_state():
+        import alerts, notifier
+        return jsonify({"actif": alerts.actif(), "configure": notifier.configure(), "source": notifier.source_reprise(),
+                        "sujet": bool(notifier._thread()), "url": alerts.lien()})
+
+    @app.route("/api/settings/alertes", methods=["POST"])
+    def alertes_save():
+        import alerts, notifier
+        body = request.get_json(silent=True) or {}
+        if body.get("test"):
+            ok, msg = alerts.test()
+            return jsonify({"ok": ok, "message": "Message envoyé : regarde ton Telegram." if ok else "", "error": "" if ok else msg}), (200 if ok else 400)
+        url = str(body.get("url", "")).strip().rstrip("/")
+        if url and (not url.startswith(("http://", "https://")) or _BAD_CHARS & set(url) or " " in url):
+            return jsonify({"ok": False, "error": "L'adresse doit commencer par http:// ou https:// (ex. https://mouflossover.mon-domaine.fr)."}), 400
+        alerts.regler(bool(body.get("actif", True)))
+        write_secret(secrets, "APP_URL", url)
+        os.environ["APP_URL"] = url
+        return jsonify({"ok": True, "message": "Enregistré."})
+
     @app.route("/api/settings/paths")
     def paths_state():
         d = engine.series_dir()

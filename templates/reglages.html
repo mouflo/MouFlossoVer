@@ -44,6 +44,17 @@
         <div id="emMsg"></div>
     </div>
 
+    <div class="panel" data-onglet="Connexions">
+        <h2>🔔 Notifications Telegram</h2>
+        <div class="sub">Un message vous prévient dès qu'un crossover est détecté ou devient prêt à être rangé (par exemple quand l'épisode qui manquait est arrivé). Les messages arrivent dans le sujet « MouFlossover » de votre groupe Telegram.</div>
+        <div class="state" id="alState"></div>
+        <label class="check"><input type="checkbox" id="alOn"> Me prévenir par Telegram</label>
+        <div class="field"><label for="alUrl">Adresse de l'appli (le lien du message)</label>
+            <input type="text" id="alUrl" autocapitalize="off" spellcheck="false" placeholder="https://mouflossover.mon-domaine.fr"></div>
+        <div class="row"><button class="btn ghost" id="alTest" type="button">Envoyer un message de test</button><button class="btn" id="alSave" type="button">Enregistrer</button></div>
+        <div id="alMsg"></div>
+    </div>
+
     <div class="panel" data-onglet="Dossiers">
         <h2>📁 Dossier des séries</h2>
         <div class="sub">Le dossier d'Emby qui contient un sous-dossier par série. MouFlossover refuse de toucher à un fichier situé en dehors.</div>
@@ -85,6 +96,15 @@
         say('emMsg', r.message || r.error, r.ok);
         if (r.ok) { $('emKey').value = ''; const n = await api('/api/settings/emby'); $('emState').textContent = 'Clé actuelle : ' + (n.hint || 'définie'); }
     });
+
+    async function alertes() {
+        const a = await api('/api/settings/alertes');
+        $('alOn').checked = a.actif; $('alUrl').value = a.url || '';
+        $('alState').textContent = a.configure ? ('✅ Telegram prêt' + (a.source ? ' (réglages repris de ' + a.source + ')' : '') + (a.sujet ? ', sujet dédié.' : ', sans sujet dédié.')) : '❌ Aucun jeton Telegram trouvé sur le serveur.';
+    }
+    await alertes();
+    $('alTest').addEventListener('click', async () => { say('alMsg', 'Envoi…', true); const r = await post('/api/settings/alertes', {test: true}); say('alMsg', r.message || r.error, r.ok); });
+    $('alSave').addEventListener('click', async () => { const r = await post('/api/settings/alertes', {actif: $('alOn').checked, url: $('alUrl').value}); say('alMsg', r.message || r.error, r.ok); if (r.ok) await alertes(); });
 
     async function chemins() {
         const p = await api('/api/settings/paths');

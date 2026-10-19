@@ -650,6 +650,9 @@ def refresh():
                             "applied": c["id"] in st["done"], "wiki": wiki_sources(c), "fixed": c.get("fixed", False),
                             "invites": invites.pour_carte({p["key"] for p in parts})})
             CACHE.update({"items": out, "updated": datetime.datetime.now().isoformat(timespec="seconds"), "error": None})
+            if out and not WIKISTATE["running"]:
+                import alerts
+                alerts.veiller(out)
         except Exception as ex:
             traceback.print_exc()
             CACHE["error"] = str(ex)
