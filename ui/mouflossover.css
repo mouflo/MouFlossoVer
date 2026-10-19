@@ -100,3 +100,7 @@ body.mou-skin button.mf-pill.on { background:var(--accent); border-color:var(--a
 .mf-fixrow .mf-tx small{display:block;opacity:.7;overflow-wrap:anywhere}
 .mf-fixbtns{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 .mf-fixrow .mf-pn{background:var(--accent);color:#fff;min-width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:700}
+
+.mf-bar{height:14px;border-radius:99px;background:var(--bg);border:1px solid var(--border,rgba(255,255,255,.1));overflow:hidden;margin:14px 0 6px}
+.mf-barfill{height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent-hover,var(--accent)));border-radius:99px;transition:width .6s ease}
+.mf-barpct{text-align:right;font-size:1.05rem}

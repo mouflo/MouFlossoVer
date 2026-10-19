@@ -558,6 +558,32 @@ def wiki_scan(force=False):
         refresh()
 
 
+JOB = {"state": "idle"}      # état d'avancement du rangement / de l'annulation en cours, lu par l'écran
+
+
+def job_pct():
+    t = max(JOB.get("total", 1), 1)
+    sub = (JOB.get("sub_i", 0) + JOB.get("ff", 0)) / max(JOB.get("sub_n", 1), 1)
+    return min(100, int(100 * (JOB.get("done", 0) + sub) / t))
+
+
+def copie_suivie(src, dst):
+    """Copie un fichier par morceaux en mettant à jour l'avancement (les vidéos sont lourdes)."""
+    taille = os.path.getsize(src)
+    fait = 0
+    with open(src, "rb") as a, open(dst, "wb") as b:
+        while True:
+            buf = a.read(8 * 1024 * 1024)
+            if not buf:
+                break
+            b.write(buf)
+            fait += len(buf)
+            JOB["ff"] = fait / taille if taille else 1
+            JOB["pct"] = job_pct()
+    shutil.copystat(src, dst)
+    JOB["ff"] = 0
+
+
 def _execute(c, plan, st):
     mid = "%s-%s" % (c["id"], datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
     mdir = os.path.join(DATA, "manifests")
@@ -570,9 +596,12 @@ def _execute(c, plan, st):
         with open(mpath, "w", encoding="utf-8") as f:
             json.dump(manifest, f, ensure_ascii=False, indent=1)
 
+    JOB.update(state="running", kind="apply", name=c["name"], total=len(plan["ops"]), done=0, sub_i=0, sub_n=1, ff=0, pct=0,
+               label="Préparation…", message="", emby="", ok=None)
     try:
         for op in plan["ops"]:
             k = op["kind"]
+            JOB.update(label=op.get("label", ""), sub_i=0, sub_n=len(op.get("files", [])) or 1, ff=0, pct=job_pct())
             if k in ("rename_group", "copy_group"):
                 for f in op["files"]:
                     dst = os.path.join(op["dir"], op["to_stem"] + f[len(op["from_stem"]):])
@@ -584,9 +613,10 @@ def _execute(c, plan, st):
                         manifest["actions"].append({"type": "rename", "from": src, "to": dst})
                     else:
                         src = os.path.join(op["src_dir"], f)
-                        shutil.copy2(src, dst)
+                        copie_suivie(src, dst)
                         manifest["actions"].append({"type": "copy", "to": dst})
                     flush()
+                    JOB["sub_i"] += 1
             elif k == "unmonitor":
                 ep = sonarr("GET", "/episode/%d" % op["episodeId"])
                 ep["monitored"] = False
@@ -615,6 +645,7 @@ def _execute(c, plan, st):
                     f.write(t)
                 manifest["actions"].append({"type": "nfo", "path": op["path"], "backup": bk})
                 flush()
+            JOB.update(done=JOB["done"] + 1, sub_i=0, ff=0, pct=job_pct())
         manifest["status"] = "done"
         flush()
         st["done"][c["id"]] = mpath
@@ -635,7 +666,10 @@ def undo(cid, st):
         return {"ok": False, "error": "Aucun manifeste pour ce crossover"}
     with open(mpath, encoding="utf-8") as f:
         manifest = json.load(f)
+    JOB.update(state="running", kind="undo", name=manifest.get("name", ""), total=len(manifest["actions"]), done=0, sub_i=0, sub_n=1,
+               ff=0, pct=0, label="Remise en état…", message="", emby="", ok=None)
     for a in reversed(manifest["actions"]):
+        JOB.update(done=JOB["done"] + 1, pct=job_pct())
         if a["type"] == "copy" and os.path.exists(a["to"]):
             os.remove(a["to"])
         elif a["type"] == "rename" and os.path.exists(a["to"]):
@@ -679,7 +713,7 @@ def occupe():
     raisons = []
     if WIKISTATE["running"]:
         raisons.append("analyse de Wikipédia")
-    if APPLYING["on"]:
+    if APPLYING["on"] or JOB.get("state") == "running":
         raisons.append("rangement d'un crossover")
     return raisons
 

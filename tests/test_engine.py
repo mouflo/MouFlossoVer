@@ -57,6 +57,8 @@ class TestRangement(unittest.TestCase):
 
         etat = {"ignored": [], "done": {}, "history": []}
         res = engine.execute(c, plan, etat)
+        self.assertEqual(engine.JOB["done"], engine.JOB["total"])
+        self.assertEqual(engine.job_pct(), 100)
         self.assertTrue(res["ok"], res)
         fire = TMP / "series" / "Chicago Fire" / "s14"
         med = TMP / "series" / "Chicago Med" / "s11"

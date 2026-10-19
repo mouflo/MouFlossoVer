@@ -138,6 +138,31 @@
     if (c.status === 'done') return ['Tout est en place', 'Chaque série contient déjà les ' + n + ' parties, au bon endroit.'];
     return ['Mis de côté', 'Ce crossover ne sera pas traité tant que tu ne le restaures pas.'];
   }
+  // Fenêtre d'avancement : suit le rangement ou l'annulation en cours jusqu'à la fin, puis recharge la liste
+  var suivi = false;
+  async function suivre(titre) {
+    if (suivi) return; suivi = true;
+    var bar = h('div', {class: 'mf-barfill'}), pct = h('b', {}, '0 %'), lab = h('p', {class: 'mou-msub'}, 'Préparation…');
+    var m = h('div', {class: 'mou-modal show', id: 'mfJob'}, h('div', {class: 'mou-box narrow'}, h('h3', {}, titre),
+      lab, h('div', {class: 'mf-bar'}, bar), h('div', {class: 'mf-barpct'}, pct),
+      h('p', {class: 'mf-note'}, 'Tu peux laisser cette page ouverte : le traitement continue de toute façon, même si tu la quittes.')));
+    document.body.append(m); document.body.style.overflow = 'hidden';
+    var fin = null;
+    while (!fin) {
+      await new Promise(function (r) { setTimeout(r, 700); });
+      var j; try { j = await api('/api/job'); } catch (e) { continue; }
+      if (!j || j.error) continue;
+      bar.style.width = (j.pct || 0) + '%'; pct.textContent = (j.pct || 0) + ' %';
+      lab.textContent = (j.total ? 'Étape ' + Math.min((j.done || 0) + 1, j.total) + ' sur ' + j.total + ' — ' : '') + (j.label || '');
+      if (j.state === 'fini') fin = j;
+      else if (j.state !== 'running') fin = {ok: false, message: 'Le traitement ne répond plus.'};
+    }
+    m.remove(); if (!document.querySelector('.mou-modal.show')) document.body.style.overflow = '';
+    suivi = false;
+    toast((fin.message || '') + ' ' + (fin.emby || ''), fin.ok ? 'ok' : 'err');
+    await load(false);
+  }
+
   // Correction à la main : changer l'ordre des parties ou en retirer une
   async function corriger(c) {
     var lignes = c.parts.map(function (p) { return {key: p.key, p: p, out: false}; });
@@ -186,8 +211,7 @@
         h('p', {class: 'mou-msub'}, "Aucun fichier n'est supprimé. Un journal est conservé : « Annuler le traitement » remettra tout comme avant."));
       if (!await dlg('Organiser ce crossover ?', body, 'Organiser')) return;
       var r = await post('/api/crossovers/' + c.id + '/apply');
-      if (r.ok) toast('Crossover organisé (' + r.actions + ' actions). ' + (r.emby || ''), 'ok'); else toast(r.error || 'Échec', 'err');
-      load(false);
+      if (r.ok) suivre('Organisation de « ' + c.name + ' »'); else { toast(r.error || 'Échec', 'err'); load(false); }
     }}, 'Organiser ce crossover'));
     if (c.status !== 'ignored' && !c.blockers.length) {
       var prev = h('button', {type: 'button', class: 'mou-btn ghost', onclick: async function () {
@@ -203,7 +227,8 @@
     }
     if (c.applied) acts.append(h('button', {type: 'button', class: 'mou-btn danger', onclick: async function () {
       if (!await dlg('Annuler le traitement ?', h('p', {class: 'mou-msub'}, "Les copies créées seront supprimées, les fichiers renommés retrouveront leur nom d'origine et les informations modifiées seront restaurées."), 'Annuler le traitement', true)) return;
-      var r = await post('/api/crossovers/' + c.id + '/undo'); toast(r.ok ? 'Traitement annulé. ' + (r.emby || '') : (r.error || 'Échec'), r.ok ? 'ok' : 'err'); load(false);
+      var r = await post('/api/crossovers/' + c.id + '/undo');
+      if (r.ok) suivre('Annulation de « ' + c.name + ' »'); else { toast(r.error || 'Échec', 'err'); load(false); }
     }}, 'Annuler le traitement'));
     if (!c.applied && c.status !== 'ignored') acts.append(h('button', {type: 'button', class: 'mou-btn ghost small', onclick: function () { corriger(c); }}, c.fixed ? '✏️ Corrigé à la main' : '✏️ Corriger'));
     acts.append(h('button', {type: 'button', class: 'mou-btn ghost small', onclick: async function () { await post('/api/crossovers/' + c.id + '/ignore', {ignored: c.status !== 'ignored'}); load(false); }}, c.status === 'ignored' ? 'Restaurer' : 'Mettre de côté'));
@@ -221,12 +246,16 @@
     if (was && !w.running) { toast('Analyse Wikipédia terminée', 'ok'); load(false); }
   }
 
+  async function reprise() {
+    try { var j = await api('/api/job'); if (j && j.state === 'running') suivre((j.kind === 'undo' ? 'Annulation' : 'Organisation') + (j.name ? ' de « ' + j.name + ' »' : '')); } catch (e) {}
+  }
+
   function init() {
     $('#mfQ').addEventListener('input', function (e) { st.q = e.target.value; render(); });
     $('#mfRefresh').addEventListener('click', function () { load(true); });
     try { if (localStorage.getItem('mf-help') === 'hidden') $('#mfHelp').style.display = 'none'; } catch (e) {}
     $('#mfHelpX').addEventListener('click', function () { $('#mfHelp').style.display = 'none'; try { localStorage.setItem('mf-help', 'hidden'); } catch (e) {} });
-    load(false); loadWiki();
+    load(false); loadWiki(); reprise();
     setInterval(function () { load(false); }, 60000);
     setInterval(loadWiki, 8000);
   }

@@ -101,6 +101,8 @@ def _dossiers(c):
 
 @app.route("/api/crossovers/<cid>/apply", methods=["POST"])
 def api_apply(cid):
+    if engine.JOB.get("state") == "running":
+        return jsonify({"ok": False, "error": "Un traitement est déjà en cours : attends qu'il se termine."}), 409
     with engine.LOCK:
         c = engine.find_crossover(cid)
         if not c:
@@ -108,25 +110,62 @@ def api_apply(cid):
         plan = engine.make_plan(c)
         if plan["blockers"]:
             return jsonify({"ok": False, "error": "Rangement impossible : " + " ; ".join(plan["blockers"])}), 409
-        res = engine.execute(c, plan, engine.load_state())
-        logger.info("Crossover « %s » : %s", c["name"], "rangé" if res.get("ok") else "échec (%s)" % res.get("error"))
-        engine.refresh()
-    if res.get("ok"):
-        res["emby"] = emby.actualiser(_dossiers(c))
-        logger.info("%s", res["emby"])
-    return jsonify(res)
+    engine.JOB.update(state="running", kind="apply", name=c["name"], total=len(plan["ops"]), done=0, sub_i=0, sub_n=1, ff=0, pct=0,
+                      label="Préparation…", message="", emby="", ok=None)
+
+    def travail():
+        try:
+            with engine.LOCK:
+                res = engine.execute(c, plan, engine.load_state())
+                logger.info("Crossover « %s » : %s", c["name"], "rangé" if res.get("ok") else "échec (%s)" % res.get("error"))
+                engine.refresh()
+            if res.get("ok"):
+                engine.JOB.update(label="Actualisation d'Emby…", pct=100)
+                res["emby"] = emby.actualiser(_dossiers(c))
+                logger.info("%s", res["emby"])
+            engine.JOB.update(state="fini", ok=bool(res.get("ok")), pct=100 if res.get("ok") else engine.JOB.get("pct", 0),
+                              message=("Crossover organisé (%d actions)." % res.get("actions", 0)) if res.get("ok") else res.get("error", "Échec"),
+                              emby=res.get("emby", ""))
+        except Exception as ex:
+            logger.exception("Rangement en erreur")
+            engine.JOB.update(state="fini", ok=False, message=str(ex))
+
+    import threading
+    threading.Thread(target=travail, daemon=True).start()
+    return jsonify({"ok": True, "started": True})
 
 
 @app.route("/api/crossovers/<cid>/undo", methods=["POST"])
 def api_undo(cid):
-    with engine.LOCK:
-        c = engine.find_crossover(cid)
-        res = engine.undo(cid, engine.load_state())
-        logger.info("Annulation du crossover %s : %s", cid, "faite" if res.get("ok") else res.get("error"))
-        engine.refresh()
-    if res.get("ok") and c:
-        res["emby"] = emby.actualiser(_dossiers(c))
-    return jsonify(res)
+    if engine.JOB.get("state") == "running":
+        return jsonify({"ok": False, "error": "Un traitement est déjà en cours : attends qu'il se termine."}), 409
+    engine.JOB.update(state="running", kind="undo", name="", total=1, done=0, sub_i=0, sub_n=1, ff=0, pct=0,
+                      label="Remise en état…", message="", emby="", ok=None)
+
+    def travail():
+        try:
+            with engine.LOCK:
+                c = engine.find_crossover(cid)
+                res = engine.undo(cid, engine.load_state())
+                logger.info("Annulation du crossover %s : %s", cid, "faite" if res.get("ok") else res.get("error"))
+                engine.refresh()
+            if res.get("ok") and c:
+                engine.JOB.update(label="Actualisation d'Emby…", pct=100)
+                res["emby"] = emby.actualiser(_dossiers(c))
+            engine.JOB.update(state="fini", ok=bool(res.get("ok")), pct=100, message="Traitement annulé." if res.get("ok") else res.get("error", "Échec"),
+                              emby=res.get("emby", ""))
+        except Exception as ex:
+            logger.exception("Annulation en erreur")
+            engine.JOB.update(state="fini", ok=False, message=str(ex))
+
+    import threading
+    threading.Thread(target=travail, daemon=True).start()
+    return jsonify({"ok": True, "started": True})
+
+
+@app.route("/api/job")
+def api_job():
+    return jsonify(dict(engine.JOB, pct=engine.job_pct() if engine.JOB.get("state") == "running" else engine.JOB.get("pct", 0)))
 
 
 @app.route("/api/crossovers/<cid>/fix", methods=["POST"])
