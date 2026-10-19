@@ -289,8 +289,9 @@ def build_crossovers():
             if not near:
                 continue
             ae = min(near, key=lambda x: abs((datetime.date.fromisoformat(x["airDate"]) - bd).days))
+            hint = partie_dite(c["line"])
             groups.append({"date": be["airDate"], "name": "", "wiki": [{"page": c["page"], "line": c["line"], "series": s["title"]}], "parts": {
-                (s["id"], ae["seasonNumber"], ae["episodeNumber"]): {"s": s, "e": ae, "part": None, "src": "wikipedia"},
+                (s["id"], ae["seasonNumber"], ae["episodeNumber"]): {"s": s, "e": ae, "part": hint, "src": "wikipedia"},
                 (b["id"], be["seasonNumber"], be["episodeNumber"]): {"s": b, "e": be, "part": None, "src": "wikipedia"}}})
     merged = True
     while merged:
@@ -311,6 +312,7 @@ def build_crossovers():
             if merged:
                 break
     items = []
+    fixes = load_state().get("fixes", {})
     for g in groups:
         order = sorted(g["parts"].items(), key=lambda kv: (kv[1]["e"].get("airDateUtc") or kv[1]["e"].get("airDate") or "", kv[1]["s"]["title"]))
         used = {v["part"] for v in g["parts"].values() if v["part"]}
@@ -324,10 +326,27 @@ def build_crossovers():
         first = min(g["parts"].values(), key=lambda v: v["part"])
         name = g["name"] or PART_RX.sub("", first["e"].get("title") or "").strip() or "Crossover"
         cid = hashlib.sha1("|".join(sorted("%d-%d-%d" % k for k in g["parts"])).encode()).hexdigest()[:10]
-        items.append({"id": cid, "franchise": fr, "date": g["date"], "parts": g["parts"], "name": name, "wiki": g.get("wiki", [])})
+        parts = g["parts"]
+        fx = fixes.get(cid)
+        if fx:
+            parts = {k: v for k, v in parts.items() if "%d-%d-%d" % k not in fx.get("exclude", [])}
+            if len({v["s"]["id"] for v in parts.values()}) < 2:
+                continue
+            rang = {key: i for i, key in enumerate(fx.get("order", []))}
+            for i, (k, v) in enumerate(sorted(parts.items(), key=lambda kv: (rang.get("%d-%d-%d" % kv[0], 999), kv[1]["part"]))):
+                v["part"] = i + 1
+        items.append({"id": cid, "franchise": fr, "date": g["date"], "parts": parts, "name": name, "wiki": g.get("wiki", []),
+                      "fixed": bool(fx)})
     items.sort(key=lambda c: c["date"], reverse=True)
     ALLITEMS[:] = items
     return items, series
+
+
+def partie_dite(ligne):
+    """« Il s'agit de la deuxième partie… » / « Première partie d'un crossover… » : numéro de la partie de l'épisode
+    de la page (None si la phrase ne le dit pas)."""
+    m = re.search(r"\b(première|deuxième|seconde|troisième|quatrième)\s+partie\b", ligne or "", re.I)
+    return {"première": 1, "deuxième": 2, "seconde": 2, "troisième": 3, "quatrième": 4}[m.group(1).lower()] if m else None
 
 
 def wiki_url(page):
@@ -368,7 +387,7 @@ def part_list(c):
     out = []
     for k, v in sorted(c["parts"].items(), key=lambda kv: (kv[1]["part"], kv[1]["s"]["title"])):
         s, e = v["s"], v["e"]
-        out.append({"series": s["title"], "seriesId": s["id"], "tag": tag_of(s["title"]),
+        out.append({"key": "%d-%d-%d" % k, "series": s["title"], "seriesId": s["id"], "tag": tag_of(s["title"]),
                     "season": e["seasonNumber"], "ep": e["episodeNumber"], "title": e.get("title") or "",
                     "part": v["part"], "hasFile": bool(e.get("hasFile")), "episodeId": e["id"],
                     "monitored": bool(e.get("monitored")), "source": v["src"], "path": s["path"]})
@@ -510,7 +529,7 @@ def refresh():
                 out.append({"id": c["id"], "name": c["name"], "franchise": c["franchise"], "date": c["date"],
                             "status": status, "parts": [{k: v for k, v in p.items() if k != "path"} for p in parts],
                             "opCount": len(plan["ops"]), "blockers": plan["blockers"], "warnings": plan["warnings"],
-                            "applied": c["id"] in st["done"], "wiki": wiki_sources(c)})
+                            "applied": c["id"] in st["done"], "wiki": wiki_sources(c), "fixed": c.get("fixed", False)})
             CACHE.update({"items": out, "updated": datetime.datetime.now().isoformat(timespec="seconds"), "error": None})
         except Exception as ex:
             traceback.print_exc()

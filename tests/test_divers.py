@@ -79,3 +79,10 @@ class TestPosition(unittest.TestCase):
         self.assertTrue(engine.position_ok("<displayepisode>10</displayepisode>\n<displayseason>7</displayseason>", (7, 10)))
         self.assertFalse(engine.position_ok("<displayepisode>11</displayepisode><displayseason>7</displayseason>", (7, 10)))
         self.assertFalse(engine.position_ok("<title>x</title>", (7, 10)))
+
+
+class TestPartieDite(unittest.TestCase):
+    def test_partie_dite(self):
+        self.assertEqual(engine.partie_dite("Il s'agit de la deuxième partie de l'épisode 7 de la saison 6 de Grey's Anatomy station 19."), 2)
+        self.assertEqual(engine.partie_dite("Première partie d'un crossover qui se poursuit avec l'épisode 13"), 1)
+        self.assertIsNone(engine.partie_dite("L'épisode 12 marque un crossover avec NCIS"))

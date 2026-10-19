@@ -92,3 +92,11 @@ body.mou-skin button.mf-pill.on { background:var(--accent); border-color:var(--a
 .mf-wk a { color:var(--accent); font-weight:600; text-decoration:none; overflow-wrap:anywhere; }
 .mf-wk a:hover { text-decoration:underline; }
 .mf-wk small { display:block; color:var(--muted); font-size:.78rem; margin-top:3px; line-height:1.4; overflow-wrap:anywhere; }
+
+.mf-fix{display:flex;flex-direction:column;gap:8px;margin:12px 0}
+.mf-fixrow{display:flex;align-items:center;gap:10px;background:var(--bg);border:1px solid var(--border,rgba(255,255,255,.08));border-radius:12px;padding:8px 10px}
+.mf-fixrow.out{opacity:.5}
+.mf-fixrow .mf-tx{flex:1;min-width:0}
+.mf-fixrow .mf-tx small{display:block;opacity:.7;overflow-wrap:anywhere}
+.mf-fixbtns{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.mf-fixrow .mf-pn{background:var(--accent);color:#fff;min-width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:700}

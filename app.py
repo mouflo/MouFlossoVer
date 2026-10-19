@@ -129,6 +129,33 @@ def api_undo(cid):
     return jsonify(res)
 
 
+@app.route("/api/crossovers/<cid>/fix", methods=["POST"])
+def api_fix(cid):
+    """Correction à la main : ordre des parties et parties à retirer (ou retour à la détection automatique)."""
+    body = request.get_json(silent=True) or {}
+    with engine.LOCK:
+        st = engine.load_state()
+        if cid in st["done"]:
+            return jsonify({"ok": False, "error": "Ce crossover est déjà rangé : annule d'abord le traitement pour le corriger."}), 409
+        fixes = st.setdefault("fixes", {})
+        if body.get("reset"):
+            fixes.pop(cid, None)
+        else:
+            c = engine.find_crossover(cid)
+            if not c:
+                return jsonify({"ok": False, "error": "Crossover introuvable : actualise la liste."}), 404
+            cles = {p["key"] for p in engine.part_list(c)} | set(fixes.get(cid, {}).get("exclude", []))
+            order = [k for k in body.get("order", []) if k in cles]
+            exclude = [k for k in body.get("exclude", []) if k in cles]
+            restantes = {p["seriesId"] for p in engine.part_list(c) if p["key"] not in exclude}
+            if len(restantes) < 2:
+                return jsonify({"ok": False, "error": "Il doit rester des parties d'au moins 2 séries. Pour écarter tout le crossover, utilise « Mettre de côté »."}), 400
+            fixes[cid] = {"order": order, "exclude": exclude}
+        engine.save_state(st)
+        engine.refresh()
+    return jsonify({"ok": True})
+
+
 @app.route("/api/crossovers/<cid>/ignore", methods=["POST"])
 def api_ignore(cid):
     ignorer = bool((request.get_json(silent=True) or {}).get("ignored", True))

@@ -138,6 +138,30 @@
     if (c.status === 'done') return ['Tout est en place', 'Chaque série contient déjà les ' + n + ' parties, au bon endroit.'];
     return ['Mis de côté', 'Ce crossover ne sera pas traité tant que tu ne le restaures pas.'];
   }
+  // Correction à la main : changer l'ordre des parties ou en retirer une
+  async function corriger(c) {
+    var lignes = c.parts.map(function (p) { return {key: p.key, p: p, out: false}; });
+    var liste = h('div', {class: 'mf-fix'});
+    function dessiner() {
+      var vues = lignes.filter(function (l) { return !l.out; });
+      liste.replaceChildren.apply(liste, lignes.map(function (l) {
+        var i = vues.indexOf(l);
+        return h('div', {class: 'mf-fixrow' + (l.out ? ' out' : '')},
+          h('div', {class: 'mf-pn'}, l.out ? '–' : String(i + 1)),
+          h('div', {class: 'mf-tx'}, h('b', {}, l.p.series), h('small', {}, 'S' + pad(l.p.season) + 'E' + pad(l.p.ep) + ' · « ' + l.p.title + ' »')),
+          h('div', {class: 'mf-fixbtns'},
+            l.out ? null : h('button', {type: 'button', class: 'mou-btn ghost small', disabled: i === 0, onclick: function () { var j = lignes.indexOf(vues[i - 1]), k = lignes.indexOf(l); lignes.splice(j, 0, lignes.splice(k, 1)[0]); dessiner(); }}, '▲'),
+            l.out ? null : h('button', {type: 'button', class: 'mou-btn ghost small', disabled: i === vues.length - 1, onclick: function () { var j = lignes.indexOf(vues[i + 1]), k = lignes.indexOf(l); lignes.splice(j, 0, lignes.splice(k, 1)[0]); dessiner(); }}, '▼'),
+            h('button', {type: 'button', class: 'mou-btn ghost small', onclick: function () { l.out = !l.out; dessiner(); }}, l.out ? 'Remettre' : 'Retirer')));
+      }));
+    }
+    dessiner();
+    var body = h('div', {}, h('p', {class: 'mou-msub'}, "Change l'ordre des parties avec ▲ ▼ ou retire une partie qui n'a rien à faire dans ce crossover. Rien n'est touché sur tes fichiers avant de cliquer sur « Organiser »."), liste,
+      c.fixed ? h('button', {type: 'button', class: 'mou-btn ghost small', onclick: async function () { await post('/api/crossovers/' + c.id + '/fix', {reset: true}); document.getElementById('mfDlg').remove(); toast('Détection automatique rétablie', 'ok'); load(false); }}, 'Rétablir la détection automatique') : null);
+    if (!await dlg('Corriger ce crossover', body, 'Enregistrer')) return;
+    var r = await post('/api/crossovers/' + c.id + '/fix', {order: lignes.filter(function (l) { return !l.out; }).map(function (l) { return l.key; }), exclude: lignes.filter(function (l) { return l.out; }).map(function (l) { return l.key; })});
+    toast(r.ok ? 'Correction enregistrée' : (r.error || 'Échec'), r.ok ? 'ok' : 'err'); load(false);
+  }
   function card(c, idx) {
     var plan = h('div', {class: 'mf-plan'});
     var s = summary(c);
@@ -181,6 +205,7 @@
       if (!await dlg('Annuler le traitement ?', h('p', {class: 'mou-msub'}, "Les copies créées seront supprimées, les fichiers renommés retrouveront leur nom d'origine et les informations modifiées seront restaurées."), 'Annuler le traitement', true)) return;
       var r = await post('/api/crossovers/' + c.id + '/undo'); toast(r.ok ? 'Traitement annulé. ' + (r.emby || '') : (r.error || 'Échec'), r.ok ? 'ok' : 'err'); load(false);
     }}, 'Annuler le traitement'));
+    if (!c.applied && c.status !== 'ignored') acts.append(h('button', {type: 'button', class: 'mou-btn ghost small', onclick: function () { corriger(c); }}, c.fixed ? '✏️ Corrigé à la main' : '✏️ Corriger'));
     acts.append(h('button', {type: 'button', class: 'mou-btn ghost small', onclick: async function () { await post('/api/crossovers/' + c.id + '/ignore', {ignored: c.status !== 'ignored'}); load(false); }}, c.status === 'ignored' ? 'Restaurer' : 'Mettre de côté'));
     return h('article', {class: 'mf-card', style: 'animation-delay:' + Math.min(idx * 40, 400) + 'ms'},
       h('div', {class: 'mf-top'}, h('div', {style: 'flex:1;min-width:0'}, h('h3', {}, c.name), h('div', {class: 'mf-sub'}, fmtDate(c.date), h('span', {class: 'mf-fr'}, c.franchise), c.applied ? h('span', {class: 'mf-chip w'}, 'rangé par MouFlossover') : null)),
