@@ -58,7 +58,7 @@
 
   function explainBlocker(b) {
     var m;
-    if (/^Partie .* manquante/.test(b)) return {icon: '🧩', t: b.split(' : ')[0].replace(/^Partie/, 'Il manque la partie'), d: "Cette partie du crossover vient d'une série que tu n'as pas dans Sonarr (ou d'un épisode que Sonarr ne connaît pas). Ajoute la série dans Sonarr, puis « Actualiser ». Si tu préfères ranger quand même les parties que tu as, utilise « Corriger » puis « Enregistrer » : les parties seront renumérotées sans trou.", files: []};
+    if (/^Partie .* manquante/.test(b)) return {icon: '🧩', t: 'Il manque la partie ' + (b.match(/^Partie (.*?) manquante/) || [0, ''])[1] + ' du crossover', d: "Cette partie du crossover vient d'une série que tu n'as pas dans Sonarr (ou d'un épisode que Sonarr ne connaît pas). Ajoute la série dans Sonarr, puis « Actualiser ». Si tu préfères ranger quand même les parties que tu as, utilise « Corriger » puis « Enregistrer » : les parties seront renumérotées sans trou.", files: []};
     if (/pas encore téléchargé/.test(b)) return {icon: '⏳', t: 'Épisode pas encore téléchargé', d: b.split(' : ')[0] + " n'est pas encore dans la bibliothèque. Sonarr doit d'abord le récupérer, puis clique sur « Actualiser ».", files: []};
     if (/introuvable sur le disque/.test(b)) return {icon: '❓', t: 'Fichier introuvable', d: b.split(' : ')[0] + " : Sonarr le croit présent mais je ne le trouve pas dans le dossier de la saison.", files: []};
     if ((m = b.match(/^(.*?) : plusieurs fichiers candidats \((.*)\)$/))) return {icon: '⚠️', t: 'Deux fichiers pour le même épisode', d: m[1] + " : je ne sais pas lequel est le bon. Supprime ou renomme le doublon sur le disque, puis clique sur « Actualiser ».", files: m[2].split(/\.mkv, /).map(function (f) { return f.replace(/\.mkv$/, ''); })};
@@ -164,6 +164,38 @@
     await load(false);
   }
 
+  // Épisode d'une série absente de la bibliothèque : recherche de la série, saison et épisode, puis demande à Sonarr
+  async function inviter(c) {
+    var chosen = null, q = h('input', {type: 'text', class: 'mou-input', placeholder: 'Nom de la série (ex. NCIS Hawai)', autocapitalize: 'off'});
+    var sa = h('input', {type: 'number', min: '1', class: 'mou-input', placeholder: 'Saison'}), ep = h('input', {type: 'number', min: '1', class: 'mou-input', placeholder: 'Épisode'});
+    var res = h('div', {class: 'mf-fix'}), sug = h('div', {class: 'mf-fix'}), etat = h('p', {class: 'mf-note'}, '');
+    var t = null;
+    function montrer(list) {
+      res.replaceChildren.apply(res, list.map(function (r) {
+        return h('button', {type: 'button', class: 'mou-btn ghost mf-pick' + (chosen && chosen.tvdbId === r.tvdbId ? ' on' : ''), onclick: function () { chosen = r; etat.textContent = 'Série choisie : ' + r.title + (r.year ? ' (' + r.year + ')' : ''); montrer(list); }},
+          h('b', {}, r.title + (r.year ? ' (' + r.year + ')' : '')), h('small', {}, r.overview || ''));
+      }));
+      if (!list.length) res.replaceChildren(h('p', {class: 'mf-note'}, 'Aucune série trouvée.'));
+    }
+    async function chercher(terme) {
+      etat.textContent = 'Recherche…'; var r = await api('/api/lookup?term=' + encodeURIComponent(terme));
+      etat.textContent = r.error || ''; montrer(r.items || []);
+    }
+    q.addEventListener('input', function () { clearTimeout(t); t = setTimeout(function () { if (q.value.trim().length > 1) chercher(q.value.trim()); }, 500); });
+    var sg = await api('/api/crossovers/' + c.id + '/suggestions');
+    (sg.items || []).forEach(function (x) {
+      sug.append(h('button', {type: 'button', class: 'mou-btn ghost mf-pick', onclick: function () { q.value = x.title; sa.value = x.season; ep.value = x.episode; chercher(x.title); }},
+        h('b', {}, 'Wikipédia cite : ' + x.title + ' — saison ' + x.season + ', épisode ' + x.episode), h('small', {}, x.line || '')));
+    });
+    var body = h('div', {}, h('p', {class: 'mou-msub'}, "L'appli ajoute la série dans Sonarr dans un dossier de passage (invisible pour Emby, aucun autre épisode ne sera téléchargé), demande cet épisode, attend son arrivée puis le range avec le crossover. Le fichier n'est jamais supprimé : qBittorrent continue de le partager."),
+      sug.children.length ? h('div', {}, h('div', {class: 'mf-cap'}, 'Suggestions'), sug) : null,
+      h('div', {class: 'mf-cap'}, 'Série'), q, res, h('div', {class: 'mf-cap'}, 'Saison et épisode'), h('div', {style: 'display:flex;gap:8px'}, sa, ep), etat);
+    if (!await dlg("Demander l'épisode manquant", body, 'Demander cet épisode')) return;
+    if (!chosen) { toast("Choisis d'abord une série dans la liste.", 'err'); return; }
+    var r = await post('/api/crossovers/' + c.id + '/invite', {tvdbId: chosen.tvdbId, title: chosen.title, season: parseInt(sa.value, 10), episode: parseInt(ep.value, 10)});
+    toast(r.ok ? "Demande envoyée : l'appli s'occupe de tout." : (r.error || 'Échec'), r.ok ? 'ok' : 'err'); load(false);
+  }
+
   // Correction à la main : changer l'ordre des parties ou en retirer une
   async function corriger(c) {
     var lignes = c.parts.map(function (p) { return {key: p.key, p: p, out: false}; });
@@ -196,7 +228,8 @@
         h('div', {class: 'mf-pn'}, String(p.part)),
         h('div', {class: 'mf-tx'}, h('b', {}, 'Partie ' + p.part + ' — ' + p.series), h('small', {}, 'Saison ' + p.season + ', épisode ' + p.ep + ' · « ' + p.title + ' »'),
           h('span', {class: 'mf-chip ' + (p.hasFile ? 'y' : 'n')}, p.hasFile ? 'Fichier présent' : 'Pas encore téléchargé'),
-          p.source === 'wikipedia' ? h('span', {class: 'mf-chip w', title: 'Repéré grâce à Wikipédia'}, 'repéré via Wikipédia') : null));
+          p.source === 'wikipedia' ? h('span', {class: 'mf-chip w', title: 'Repéré grâce à Wikipédia'}, 'repéré via Wikipédia') : null,
+          p.source === 'invite' ? h('span', {class: 'mf-chip w', title: 'Série ajoutée dans le dossier de passage'}, 'épisode invité') : null));
     });
     var issues = [];
     c.blockers.forEach(function (b) { var e = explainBlocker(b); issues.push(h('div', {class: 'mf-issue bad'}, h('b', {}, e.icon + ' ' + e.t), e.d ? h('p', {}, e.d) : null, e.files.length ? h('ul', {}, e.files.map(function (f) { return h('li', {}, f); })) : null)); });
@@ -206,6 +239,13 @@
         return h('div', {class: 'mf-wk'}, h('a', {href: w.url, target: '_blank', rel: 'noopener noreferrer'}, '📖 ' + w.page + ' ↗'),
           h('small', {}, w.extrait ? '« ' + w.extrait + ' »' : 'Page de la série : aucun passage précis trouvé, cherche « crossover » dans la page.'));
       })) : null;
+    var inv = (c.invites || []).length ? h('div', {class: 'mf-inv'}, (c.invites || []).map(function (g) {
+      var etapes = {ajout: '1/4 Ajout de la série', recherche: '2/4 Recherche', attente: '3/4 Téléchargement', pret: '4/4 Reçu'};
+      return h('div', {class: 'mf-issue'}, h('b', {}, '📥 Épisode invité : ' + g.title + ' S' + pad(g.season) + 'E' + pad(g.episode)),
+        h('p', {}, (etapes[g.status] || g.status) + ' — ' + (g.message || '')),
+        h('div', {class: 'mf-actions'}, g.status !== 'pret' ? h('button', {type: 'button', class: 'mou-btn ghost small', onclick: async function () { await post('/api/invites/' + g.id + '/retry'); toast('Nouvel essai lancé', 'ok'); load(false); }}, 'Réessayer') : null,
+          g.status !== 'pret' ? h('button', {type: 'button', class: 'mou-btn ghost small', onclick: async function () { await post('/api/invites/' + g.id + '/cancel'); load(false); }}, 'Annuler la demande') : null));
+    })) : null;
     var acts = h('div', {class: 'mf-actions'});
     if (c.status === 'todo') acts.append(h('button', {type: 'button', class: 'mou-btn', onclick: async function () {
       var body = h('div', {}, h('p', {class: 'mou-msub'}, '« ' + c.name + ' » : ' + c.opCount + ' action(s) vont être exécutées sur tes fichiers (renommages, copies, informations Emby, réglage Sonarr).'),
@@ -231,13 +271,14 @@
       var r = await post('/api/crossovers/' + c.id + '/undo');
       if (r.ok) suivre('Annulation de « ' + c.name + ' »'); else { toast(r.error || 'Échec', 'err'); load(false); }
     }}, 'Annuler le traitement'));
+    if (c.status === 'blocked' && !(c.invites || []).length && c.blockers.some(function (b) { return /^Partie .* manquante/.test(b); })) acts.append(h('button', {type: 'button', class: 'mou-btn', onclick: function () { inviter(c); }}, "➕ Demander l'épisode manquant"));
     if (!c.applied && c.status !== 'ignored') acts.append(h('button', {type: 'button', class: 'mou-btn ghost small', onclick: function () { corriger(c); }}, c.fixed ? '✏️ Corrigé à la main' : '✏️ Corriger'));
     acts.append(h('button', {type: 'button', class: 'mou-btn ghost small', onclick: async function () { await post('/api/crossovers/' + c.id + '/ignore', {ignored: c.status !== 'ignored'}); load(false); }}, c.status === 'ignored' ? 'Restaurer' : 'Mettre de côté'));
     return h('article', {class: 'mf-card', style: 'animation-delay:' + Math.min(idx * 40, 400) + 'ms'},
       h('div', {class: 'mf-top'}, h('div', {style: 'flex:1;min-width:0'}, h('h3', {}, c.name), h('div', {class: 'mf-sub'}, fmtDate(c.date), h('span', {class: 'mf-fr'}, c.franchise), c.applied ? h('span', {class: 'mf-chip w'}, 'rangé par MouFlossover') : null)),
         h('span', {class: 'mf-badge ' + c.status}, BADGE[c.status])),
       h('div', {class: 'mf-say ' + c.status}, h('b', {}, s[0]), s[1]),
-      h('div', {class: 'mf-cap'}, 'Les parties'), parts, wk, issues, acts, plan);
+      h('div', {class: 'mf-cap'}, 'Les parties'), parts, inv, wk, issues, acts, plan);
   }
 
   async function loadWiki() {

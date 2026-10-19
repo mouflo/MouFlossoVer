@@ -1,0 +1,123 @@
+"""Épisode invité : machine à états avec un faux Sonarr, et rangement d'une partie venue du dossier de passage."""
+import os
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+RACINE = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(RACINE))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import test_engine  # noqa: E402  (fabrique le faux dossier de séries et règle DATA_DIR / SERIES_DIR)
+TMP = test_engine.TMP
+os.environ["STAGING_DIR"] = str(TMP / "passage")
+import engine  # noqa: E402
+import invites  # noqa: E402
+
+
+class FauxSonarr:
+    def __init__(self):
+        self.appels = []
+        self.series = [{"id": 1, "title": "Chicago Fire", "tvdbId": 1, "qualityProfileId": 4}]
+        self.episode = {"id": 900, "seasonNumber": 2, "episodeNumber": 10, "monitored": False, "hasFile": False}
+        self.file = []
+
+    def __call__(self, method, path, body=None):
+        self.appels.append((method, path))
+        if path == "/series" and method == "GET":
+            return self.series
+        if path == "/rootfolder":
+            return []
+        if path == "/tag":
+            return [{"label": "mouflossover-invite", "id": 5}] if method == "GET" else {"id": 5}
+        if path.startswith("/series/lookup"):
+            return [{"title": "Invitée", "tvdbId": 77, "id": 0}]
+        if path == "/series" and method == "POST":
+            assert body["addOptions"]["monitor"] == "none" and body["addOptions"]["searchForMissingEpisodes"] is False
+            assert body["rootFolderPath"] == str(TMP / "passage") and body["qualityProfileId"] == 4
+            self.series.append({"id": 50, "title": "Invitée", "tvdbId": 77, "path": str(TMP / "passage" / "Invitée")})
+            return {"id": 50}
+        if path.startswith("/episode?"):
+            return [self.episode]
+        if path.startswith("/episode/") and method == "PUT":
+            self.episode = body
+            return body
+        if path == "/command":
+            return {}
+        if path.startswith("/queue/details"):
+            return self.file
+        return []
+
+
+class TestInvites(unittest.TestCase):
+    def test_de_la_demande_a_l_episode_recu(self):
+        faux = FauxSonarr()
+        vrai_sonarr, vrai_refresh = engine.sonarr, engine.refresh
+        self.addCleanup(lambda: (setattr(engine, "sonarr", vrai_sonarr), setattr(engine, "refresh", vrai_refresh)))
+        engine.sonarr = faux
+        c = test_engine.crossover()
+        c["id"] = "inv"
+        c["parts"][(1, 14, 13)]["part"] = 1
+        c["parts"][(2, 11, 13)]["part"] = 3                         # la partie 2 manque
+        engine.refresh = lambda: None
+        st = engine.load_state()
+        engine.save_state(st)
+        res = invites.creer(c, 77, "Invitée", 2, 10)
+        self.assertTrue(res["ok"])
+        gid = res["id"]
+        import time
+        time.sleep(0.5)                                              # le premier pas tourne dans un fil
+        g = lambda: next(x for x in engine.load_state()["guests"] if x["id"] == gid)
+        self.assertEqual(g()["part"], 2)
+        self.assertIn(g()["status"], ("recherche", "ajout"))
+        invites._un_pas(gid) if g()["status"] == "ajout" else None
+        invites._un_pas(gid)                                         # recherche -> attente
+        self.assertEqual(g()["status"], "attente")
+        self.assertTrue(faux.episode["monitored"])
+        self.assertIn(("POST", "/command"), faux.appels)
+        faux.file = [{"size": 100, "sizeleft": 40}]
+        invites._un_pas(gid)
+        self.assertIn("60 %", g()["message"])
+        faux.episode["hasFile"] = True
+        invites._un_pas(gid)
+        self.assertEqual(g()["status"], "pret")
+        self.assertEqual(len([a for a in faux.appels if a == ("POST", "/series")]), 1)   # la série n'est ajoutée qu'une fois
+
+
+class TestRangementInvite(unittest.TestCase):
+    def test_plan_avec_partie_du_dossier_de_passage(self):
+        c = test_engine.crossover()
+        c["id"] = "avec-invite"
+        c["parts"][(1, 14, 13)]["part"] = 1
+        c["parts"][(2, 11, 13)]["part"] = 3
+        d = TMP / "passage" / "Invitée" / "Season 2"
+        d.mkdir(parents=True)
+        stem = "Invitée.S02E10.1080p.WEB-DL-[TEST]"
+        (d / (stem + ".mkv")).write_bytes(b"video-invitee")
+        c["parts"][(50, 2, 10)] = {
+            "s": {"id": 50, "title": "Invitée", "path": str(TMP / "passage" / "Invitée")},
+            "e": {"id": 950, "seasonNumber": 2, "episodeNumber": 10, "title": "Titre invité", "overview": "Résumé & <test>",
+                  "hasFile": True, "monitored": True, "airDate": "2026-03-04"},
+            "part": 2, "src": "invite"}
+        plan = engine.make_plan(c)
+        self.assertEqual(plan["blockers"], [])
+        genres = [o["kind"] for o in plan["ops"]]
+        self.assertIn("make_nfo", genres)
+        self.assertEqual(genres.count("copy_group"), 2 + 2)        # 2 copies croisées Fire/Med + 2 copies de la partie invitée
+        self.assertFalse(any(o["kind"] == "rename_group" and "Invitée" in o["from_stem"] for o in plan["ops"]))
+        self.assertFalse(any(o["kind"] == "unmonitor" and o["episodeId"] == 950 for o in plan["ops"]))
+        etat = engine.load_state()
+        res = engine.execute(c, plan, etat)
+        self.assertTrue(res["ok"], res)
+        self.assertTrue((d / (stem + ".mkv")).exists())             # le fichier de passage n'est jamais touché
+        nfo = [p for p in (TMP / "series" / "Chicago Fire").rglob("*.nfo") if "(INVITEE)" in p.name.upper() or "INVIT" in p.name.upper()]
+        self.assertTrue(nfo)
+        self.assertIn("Résumé &amp; &lt;test&gt;", nfo[0].read_text(encoding="utf-8"))
+        back = engine.undo("avec-invite", engine.load_state())
+        self.assertTrue(back["ok"])
+        self.assertTrue((d / (stem + ".mkv")).exists())
+        self.assertFalse([p for p in (TMP / "series" / "Chicago Fire").rglob("*.nfo") if "INVIT" in p.name.upper()])
+
+
+if __name__ == "__main__":
+    unittest.main()

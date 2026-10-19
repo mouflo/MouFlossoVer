@@ -104,3 +104,8 @@ body.mou-skin button.mf-pill.on { background:var(--accent); border-color:var(--a
 .mf-bar{height:14px;border-radius:99px;background:var(--bg);border:1px solid var(--border,rgba(255,255,255,.1));overflow:hidden;margin:14px 0 6px}
 .mf-barfill{height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent-hover,var(--accent)));border-radius:99px;transition:width .6s ease}
 .mf-barpct{text-align:right;font-size:1.05rem}
+
+.mf-pick{display:block;text-align:left;width:100%;white-space:normal}
+.mf-pick small{display:block;opacity:.7;font-weight:400;margin-top:2px}
+.mf-pick.on{outline:2px solid var(--accent)}
+.mf-inv{margin:8px 0}

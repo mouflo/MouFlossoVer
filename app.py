@@ -168,6 +168,59 @@ def api_job():
     return jsonify(dict(engine.JOB, pct=engine.job_pct() if engine.JOB.get("state") == "running" else engine.JOB.get("pct", 0)))
 
 
+@app.route("/api/lookup")
+def api_lookup():
+    import invites
+    terme = (request.args.get("term") or "").strip()
+    if len(terme) < 2:
+        return jsonify({"items": []})
+    try:
+        return jsonify({"items": invites.lookup(terme)})
+    except Exception as ex:
+        return jsonify({"items": [], "error": "Sonarr n'a pas répondu (%s)" % ex.__class__.__name__}), 502
+
+
+@app.route("/api/crossovers/<cid>/suggestions")
+def api_suggestions(cid):
+    import invites
+    c = engine.find_crossover(cid)
+    if not c:
+        return jsonify({"items": []}), 404
+    try:
+        return jsonify({"items": invites.suggestions(c)})
+    except Exception:
+        return jsonify({"items": []})
+
+
+@app.route("/api/crossovers/<cid>/invite", methods=["POST"])
+def api_invite(cid):
+    import invites
+    body = request.get_json(silent=True) or {}
+    try:
+        tvdb, saison, episode = int(body.get("tvdbId")), int(body.get("season")), int(body.get("episode"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Choisis une série dans la liste et indique la saison et l'épisode."}), 400
+    if saison < 1 or episode < 1:
+        return jsonify({"ok": False, "error": "La saison et l'épisode doivent être des numéros à partir de 1."}), 400
+    c = engine.find_crossover(cid)
+    if not c:
+        return jsonify({"ok": False, "error": "Crossover introuvable : actualise la liste."}), 404
+    res = invites.creer(c, tvdb, str(body.get("title", ""))[:120], saison, episode)
+    return jsonify(res), (200 if res.get("ok") else 409)
+
+
+@app.route("/api/invites/<gid>/<action>", methods=["POST"])
+def api_invite_action(gid, action):
+    import invites
+    if action == "retry":
+        invites.relancer(gid)
+    elif action == "cancel":
+        invites.annuler(gid)
+    else:
+        return jsonify({"ok": False}), 404
+    return jsonify({"ok": True})
+
+
 @app.route("/api/crossovers/<cid>/fix", methods=["POST"])
 def api_fix(cid):
     """Correction à la main : ordre des parties et parties à retirer (ou retour à la détection automatique)."""

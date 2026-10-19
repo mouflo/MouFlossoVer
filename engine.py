@@ -41,7 +41,8 @@ def tag_of(title):
         base = title.split(" - ", 1)[1]
     else:
         base = title
-    words = re.findall(r"[A-Za-z0-9]+", base)
+    import unicodedata
+    words = re.findall(r"[A-Za-z0-9]+", unicodedata.normalize("NFKD", base).encode("ascii", "ignore").decode())
     t = "".join(words) if len(words) == 1 else "".join(w[0] for w in words)
     return (t or "X").upper()[:8]
 
@@ -311,8 +312,20 @@ def build_crossovers():
                     break
             if merged:
                 break
+    etat = load_state()
+    for g in etat.get("guests", []):
+        if g.get("status") == "annule" or not g.get("sonarrId"):
+            continue
+        gs = next((x for x in series if x["id"] == g["sonarrId"]), None)
+        ge = gs and next((x for x in episodes_of(gs["id"]) if x["seasonNumber"] == g["season"] and x["episodeNumber"] == g["episode"]), None)
+        if not ge:
+            continue
+        for grp in groups:
+            if set(g["with"]) <= {"%d-%d-%d" % k for k in grp["parts"]}:
+                grp["parts"][(gs["id"], g["season"], g["episode"])] = {"s": gs, "e": ge, "part": g["part"], "src": "invite"}
+                break
     items = []
-    fixes = load_state().get("fixes", {})
+    fixes = etat.get("fixes", {})
     for g in groups:
         order = sorted(g["parts"].items(), key=lambda kv: (kv[1]["e"].get("airDateUtc") or kv[1]["e"].get("airDate") or "", kv[1]["s"]["title"]))
         used = {v["part"] for v in g["parts"].values() if v["part"]}
@@ -390,7 +403,8 @@ def part_list(c):
         out.append({"key": "%d-%d-%d" % k, "series": s["title"], "seriesId": s["id"], "tag": tag_of(s["title"]),
                     "season": e["seasonNumber"], "ep": e["episodeNumber"], "title": e.get("title") or "",
                     "part": v["part"], "hasFile": bool(e.get("hasFile")), "episodeId": e["id"],
-                    "monitored": bool(e.get("monitored")), "source": v["src"], "path": s["path"]})
+                    "monitored": bool(e.get("monitored")), "source": v["src"], "path": s["path"],
+                    "overview": e.get("overview") or "", "airDate": e.get("airDate") or ""})
     return out
 
 
@@ -407,7 +421,7 @@ def make_plan(c):
                         % ", ".join(str(n) for n in trous))
     for p in parts:
         sr = {"title": p["series"], "path": p["path"]}
-        if sd and not (p["path"].rstrip("/") + "/").startswith(sd.rstrip("/") + "/"):
+        if sd and not (p["path"].rstrip("/") + "/").startswith(sd.rstrip("/") + "/") and not est_invite(p["path"]):
             blockers.append("%s : le dossier de la série (%s) est en dehors du dossier des séries réglé (%s)" % (p["series"], p["path"], sd))
             continue
         if not p["hasFile"]:
@@ -425,19 +439,21 @@ def make_plan(c):
                 m = PART_RX.search(info["title"])
                 if not m or int(m.group(1)) != p["part"]:
                     warnings.append("%s : le titre du NFO « %s » ne se termine pas par (%d)" % (p["series"], info["title"], p["part"]))
-            else:
+            elif not est_invite(p["path"]):
                 warnings.append("%s S%02dE%02d : pas de NFO" % (p["series"], p["season"], p["ep"]))
     if blockers:
         return {"ops": [], "blockers": blockers, "warnings": warnings}
 
     series_ids = []
     for p in parts:
+        if est_invite(p["path"]):        # série invitée : elle ne reçoit rien et son fichier n'est pas renommé
+            continue
         if p["seriesId"] not in series_ids:
             series_ids.append(p["seriesId"])
     allocated = {}
     for p in parts:
         o = owners[(p["seriesId"], p["season"], p["ep"])]
-        if o["state"] == "plain":
+        if o["state"] == "plain" and not est_invite(p["path"]):
             stem = stem_of(o["file"])
             pre = re.match(r"^(.*?S\d{2}\.?E\d{2})", stem).group(1)
             new_stem = "%s.part%d(%s)%s" % (pre, p["part"], p["tag"], release_suffix(stem))
@@ -509,12 +525,17 @@ def make_plan(c):
             ops.append({"kind": "copy_group", "src_dir": ow["dir"], "dir": sdir, "from_stem": ow_stem, "to_stem": new_stem,
                         "files": group_files(ow["dir"], ow_stem),
                         "label": "Copier %s (part %d) dans %s en S00E%02d" % (p["series"], p["part"], t["series"], n)})
+            if not ow_nfo:       # pas de fiche (épisode invité) : on en crée une depuis les infos de Sonarr
+                ops.append({"kind": "make_nfo", "path": os.path.join(sdir, new_stem + ".nfo"), "title": p["title"],
+                            "plot": p["overview"], "aired": p["airDate"], "season": 0, "episode": n,
+                            "label": "Créer la fiche de %s (part %d) dans %s" % (p["series"], p["part"], t["series"])})
             ops.append({"kind": "patch_nfo", "path": os.path.join(sdir, new_stem + ".nfo"), "season": 0, "episode": n,
                         "airs": list(airs), "label": "Corriger le NFO de la copie %s dans %s" % (p["series"], t["series"])})
     return {"ops": ops + own_ops, "blockers": blockers, "warnings": warnings}
 
 
 def refresh():
+    import invites
     with LOCK:
         try:
             items, series = build_crossovers()
@@ -534,7 +555,8 @@ def refresh():
                 out.append({"id": c["id"], "name": c["name"], "franchise": c["franchise"], "date": c["date"],
                             "status": status, "parts": [{k: v for k, v in p.items() if k != "path"} for p in parts],
                             "opCount": len(plan["ops"]), "blockers": plan["blockers"], "warnings": plan["warnings"],
-                            "applied": c["id"] in st["done"], "wiki": wiki_sources(c), "fixed": c.get("fixed", False)})
+                            "applied": c["id"] in st["done"], "wiki": wiki_sources(c), "fixed": c.get("fixed", False),
+                            "invites": invites.pour_carte({p["key"] for p in parts})})
             CACHE.update({"items": out, "updated": datetime.datetime.now().isoformat(timespec="seconds"), "error": None})
         except Exception as ex:
             traceback.print_exc()
@@ -628,6 +650,16 @@ def _execute(c, plan, st):
                 sonarr("PUT", "/episode/%d" % op["episodeId"], ep)
                 manifest["actions"].append({"type": "unmonitor", "episodeId": op["episodeId"]})
                 flush()
+            elif k == "make_nfo":
+                from xml.sax.saxutils import escape
+                if os.path.exists(op["path"]):
+                    raise RuntimeError("Destination existe déjà : " + op["path"])
+                with open(op["path"], "w", encoding="utf-8") as f:
+                    f.write('<?xml version="1.0" encoding="utf-8" standalone="yes"?>\n<episodedetails>\n  <title>%s</title>\n'
+                            '  <plot>%s</plot>\n  <aired>%s</aired>\n  <episode>%d</episode>\n  <season>%d</season>\n</episodedetails>\n'
+                            % (escape(op["title"]), escape(op["plot"]), op["aired"], op["episode"], op["season"]))
+                manifest["actions"].append({"type": "copy", "to": op["path"]})     # l'annulation supprimera ce fichier créé par nous
+                flush()
             elif k == "patch_nfo":
                 with open(op["path"], encoding="utf-8") as f:
                     orig = f.read()
@@ -702,6 +734,15 @@ def find_crossover(cid):
 APPLYING = {"on": False}
 
 
+def staging_dir():
+    """Dossier de passage des séries invitées : hors du dossier des séries, donc invisible pour Emby."""
+    return os.environ.get("STAGING_DIR", "").strip() or os.path.join(os.path.dirname(series_dir().rstrip("/")), "Invites-MouFlossover")
+
+
+def est_invite(path):
+    return (path.rstrip("/") + "/").startswith(staging_dir().rstrip("/") + "/")
+
+
 def series_dir():
     return os.environ.get("SERIES_DIR", "/mnt/mouflosyno/Emby-Media/Series").strip()
 
@@ -729,6 +770,8 @@ def start_background():
         while True:
             time.sleep(REFRESH)
             refresh()
+    import invites
     threading.Thread(target=refresh, daemon=True).start()
     threading.Thread(target=boucle, daemon=True).start()
+    invites.demarrer()
     threading.Thread(target=lambda: (time.sleep(20), wiki_scan()), daemon=True).start()
