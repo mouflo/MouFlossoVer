@@ -1,11 +1,11 @@
 import json, os, re, sqlite3, threading, time, unicodedata, urllib.error, urllib.parse, urllib.request, zlib
 
 UA = "MouFlossover/0.2 (personal media library tool)"
-KEYWORDS = re.compile(r"crossover|cross-over|croisé|backdoor|en (?:deux|trois|quatre) parties|se poursuit|se conclut|s'achève|débute dans|se termine dans|suite dans", re.I)
+KEYWORDS = re.compile(r"crossover|cross-over|croisé|backdoor|en (?:deux|trois|quatre) parties|se poursuit|se conclut|s'achève|débute dans|se termine dans|suite dans|(?:première|deuxième|seconde|troisième|dernière) partie|conclusion de l.épisode|suite de l.épisode|se poursuit|\d+x\d+ de la série", re.I)
 ALIASES = {"chicagopolicedepartment": "chicagopd", "chicagopolice": "chicagopd"}
 TTL = 30 * 86400
 NO_PAGE_TTL = 90 * 86400
-PARSER_VERSION = 1
+PARSER_VERSION = 2
 
 
 def norm(s):
@@ -37,6 +37,32 @@ def extract_refs(line):
     return refs
 
 
+ORDINAUX = {"premier": 1, "première": 1, "deuxième": 2, "second": 2, "seconde": 2, "troisième": 3, "quatrième": 4,
+            "cinquième": 5, "sixième": 6, "septième": 7, "huitième": 8, "neuvième": 9, "dixième": 10, "onzième": 11,
+            "douzième": 12, "treizième": 13, "quatorzième": 14, "quinzième": 15, "seizième": 16, "dix-septième": 17,
+            "dix-huitième": 18, "dix-neuvième": 19, "vingtième": 20, "vingt et unième": 21, "vingt-deuxième": 22,
+            "vingt-troisième": 23, "vingt-quatrième": 24}
+ORD_RX = "|".join(sorted((re.escape(k) for k in ORDINAUX), key=len, reverse=True))
+
+
+def extract_refs_brut(line):
+    """Motifs qui vivent dans les notes <ref> ou dans des phrases à nombres écrits en lettres."""
+    refs = []
+    for m in re.finditer(r"(\d+)x(\d+)\s+de\s+la\s+série\s+(?:''|\s)*\[\[([^\]|#]+)", line):
+        refs.append((m.group(3), int(m.group(1)), int(m.group(2))))
+    s = clean(line)
+    for m in re.finditer(r"(%s|\d+)(?:e|ème)?\s+épisode\s+de\s+la\s+(?:\[\[Saison\s+(\d+)\s+(?:de|d')\s*([^\]|#]+)|(%s)\s+saison\s+(?:de|d')\s*(?:''|\s)*\[\[([^\]|#]+))" % (ORD_RX, ORD_RX), s):
+        ep = ORDINAUX.get(m.group(1).lower(), None) if not m.group(1).isdigit() else int(m.group(1))
+        if m.group(3):
+            refs.append((m.group(3), int(m.group(2)), ep))
+        elif m.group(4):
+            refs.append((m.group(5), ORDINAUX[m.group(4).lower()], ep))
+    # « crossover avec NCIS: X qui se termine dans le douzième épisode de la deuxième saison »
+    for m in re.finditer(r"(?:avec|de)\s+(?:la série\s+)?(?:''|\s)*\[\[([^\]|#]+)(?:\|[^\]]*)?\]\](?:''|\s)*[^.\[]{0,40}?(%s)\s+épisode\s+de\s+la\s+(%s)\s+saison" % (ORD_RX, ORD_RX), s):
+        refs.append((m.group(1), ORDINAUX[m.group(3).lower()], ORDINAUX[m.group(2).lower()]))
+    return refs
+
+
 def extract_claims(series_title, texts):
     me = norm(series_title)
     out, seen = [], set()
@@ -44,7 +70,7 @@ def extract_claims(series_title, texts):
         for line in txt.split("\n"):
             if not KEYWORDS.search(line):
                 continue
-            for name, season, ep in extract_refs(line):
+            for name, season, ep in extract_refs(line) + [r for r in extract_refs_brut(line) if r[2]]:
                 n = norm(name)
                 if n and n != me and (n, season, ep) not in seen:
                     seen.add((n, season, ep))
@@ -143,7 +169,27 @@ class Wiki:
             if norm(h["title"]).startswith(norm(title)) and not h["title"].startswith(("Liste", "Saison")):
                 for t, (txt, rid) in self.fetch([h["title"]]).items():
                     return t, txt, rid
+        fr = self.fr_title_via_en(title)
+        if fr:
+            for t, (txt, rid) in self.fetch([fr]).items():
+                if len(txt) >= 1500 and "{{Homonymie" not in txt:
+                    return t, txt, rid
         return None, "", None
+
+    def fr_title_via_en(self, title):
+        """Titre français d'une série grâce à la page anglaise (lien de langue)."""
+        u = "https://en.wikipedia.org/w/api.php?" + urllib.parse.urlencode(
+            {"action": "query", "titles": title, "prop": "langlinks", "lllang": "fr", "redirects": 1, "format": "json"})
+        for cand in (u, u.replace(urllib.parse.quote(title), urllib.parse.quote(title + " (TV series)"))):
+            try:
+                time.sleep(self.delay)
+                r = json.loads(urllib.request.urlopen(urllib.request.Request(cand, headers={"User-Agent": UA}), timeout=40).read())
+            except Exception:
+                continue
+            for pg in r.get("query", {}).get("pages", {}).values():
+                for ll in pg.get("langlinks", []):
+                    return ll.get("*") or ll.get("title")
+        return None
 
     def _stored_texts(self, titles):
         out = {}

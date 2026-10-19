@@ -59,3 +59,15 @@ class TestLiens(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestNCIS(unittest.TestCase):
+    def test_refs_ncis(self):
+        import wiki, engine
+        a = wiki.extract_claims("X", {"p": "Épisode crossover avec ''[[NCIS : Nouvelle-Orléans]]'' qui se termine dans le douzième épisode de la deuxième saison."})
+        self.assertEqual((a[0]["season"], a[0]["episode"]), (2, 12))
+        b = wiki.extract_claims("X", {"p": "| 12 || T (Deuxième partie<ref group=\"N\">conclusion de l'épisode 13x12 de la série ''[[NCIS : Enquêtes spéciales]]''.</ref>) ||"})
+        self.assertEqual((b[0]["season"], b[0]["episode"]), (13, 12))
+        self.assertEqual(engine.tag_of("Foo: Bar"), "BAR")
+        self.assertEqual(engine.tag_of("Law & Order: Special Victims Unit"), "SVU")
+        self.assertEqual(engine.franchise_key("NCIS: Sydney"), "ncis")

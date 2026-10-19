@@ -28,6 +28,33 @@ TAGS = {"chicago fire": "FIRE", "chicago med": "MED", "chicago p.d.": "PD", "chi
         "ncis": "NCIS", "ncis: los angeles": "LA", "ncis: new orleans": "NOLA", "ncis: hawai'i": "HAWAII",
         "ncis: sydney": "SYDNEY", "ncis: origins": "ORIGINS",
         "grey's anatomy": "GREYS", "station 19": "S19"}
+STOP = {"the", "les", "le", "la", "des", "une", "a", "an", "my", "our", "one", "new", "star", "dr", "doctor"}
+
+
+def tag_of(title):
+    t = TAGS.get(title.lower())
+    if t:
+        return t
+    if ":" in title:
+        base = title.split(":", 1)[1]
+    elif " - " in title:
+        base = title.split(" - ", 1)[1]
+    else:
+        base = title
+    words = re.findall(r"[A-Za-z0-9]+", base)
+    t = "".join(words) if len(words) == 1 else "".join(w[0] for w in words)
+    return (t or "X").upper()[:8]
+
+
+def franchise_key(title):
+    t = title.lower().strip()
+    for sep in (":", " - "):
+        if sep in t:
+            return t.split(sep, 1)[0].strip()
+    w = re.findall(r"[a-z0-9']+", t)
+    return w[0] if w and w[0] not in STOP and len(w[0]) >= 3 else None
+
+
 PART_RX = re.compile(r"\((\d)\)\s*$")
 TAG_RX = re.compile(r"\.part(\d)\.?\(([A-Za-z0-9]+)\)")
 PARTANY_RX = re.compile(r"[.-]part(?:ie)?(\d)\.?(?:\(([A-Za-z0-9]+)\))?")
@@ -133,7 +160,7 @@ def find_own(series, part):
     sd = season_dir(series["path"], part["season"])
     if not sd:
         return {"state": "missing"}
-    tag = TAGS.get(series["title"].lower(), "?")
+    tag = tag_of(series["title"])
     rx = re.compile(r"S%02d[. _-]?E%02d(?!\d)" % (part["season"], part["ep"]))
     cands = []
     for f in sorted(os.listdir(sd)):
@@ -172,9 +199,20 @@ def build_crossovers():
     EPCACHE.clear()
     by_title = {s["title"].lower(): s for s in series}
     by_norm = {wikimod.norm(s["title"]): s for s in series}
+    for s in series:
+        pg = WIKI.page_of(s["title"])
+        if pg:
+            by_norm.setdefault(wikimod.norm(pg), s)
     groups = []
-    for name, rx in FRANCHISES.items():
-        members = [s for s in series if re.search(rx, s["title"].lower())]
+    auto = {}
+    for s in series:
+        k = franchise_key(s["title"])
+        if k and s.get("statistics", {}).get("episodeFileCount", 0) > 0:
+            auto.setdefault(k, []).append(s)
+    known = {s["id"] for rx in FRANCHISES.values() for s in series if re.search(rx, s["title"].lower())}
+    families = [(n, [s for s in series if re.search(rx, s["title"].lower())]) for n, rx in FRANCHISES.items()]
+    families += [(k.title(), m) for k, m in auto.items() if len(m) >= 2 and not all(s["id"] in known for s in m)]
+    for name, members in families:
         cands = []
         for s in members:
             for e in episodes_of(s["id"]):
@@ -256,7 +294,8 @@ def build_crossovers():
             if v["part"] is None:
                 v["part"] = next(free)
         titles = {v["s"]["title"] for v in g["parts"].values()}
-        fr = next((fn for fn, rx in FRANCHISES.items() if all(re.search(rx, t.lower()) for t in titles)), "Autres séries")
+        fr = next((fn for fn, rx in FRANCHISES.items() if all(re.search(rx, t.lower()) for t in titles)), None) \
+            or next((fn for fn, m in families if titles <= {x["title"] for x in m}), "Autres séries")
         first = min(g["parts"].values(), key=lambda v: v["part"])
         name = g["name"] or PART_RX.sub("", first["e"].get("title") or "").strip() or "Crossover"
         cid = hashlib.sha1("|".join(sorted("%d-%d-%d" % k for k in g["parts"])).encode()).hexdigest()[:10]
@@ -303,7 +342,7 @@ def part_list(c):
     out = []
     for k, v in sorted(c["parts"].items(), key=lambda kv: (kv[1]["part"], kv[1]["s"]["title"])):
         s, e = v["s"], v["e"]
-        out.append({"series": s["title"], "seriesId": s["id"], "tag": TAGS.get(s["title"].lower(), "?"),
+        out.append({"series": s["title"], "seriesId": s["id"], "tag": tag_of(s["title"]),
                     "season": e["seasonNumber"], "ep": e["episodeNumber"], "title": e.get("title") or "",
                     "part": v["part"], "hasFile": bool(e.get("hasFile")), "episodeId": e["id"],
                     "monitored": bool(e.get("monitored")), "source": v["src"], "path": s["path"]})
