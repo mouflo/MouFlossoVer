@@ -315,3 +315,27 @@
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 })();
+
+// Touche « retour » du téléphone : ferme la fenêtre ouverte au lieu de quitter l'appli
+(function () {
+  var empile = 0, ignore = 0;
+  function ouvertes() { return document.querySelectorAll('.mou-modal.show'); }
+  function sync() {
+    var n = ouvertes().length;
+    while (empile < n) { history.pushState({mou: 1}, ''); empile++; }
+    if (empile > n) { var k = empile - n; empile = n; ignore++; history.go(-k); }
+  }
+  window.addEventListener('popstate', function () {
+    if (ignore) { ignore--; return; }
+    var liste = ouvertes();
+    if (!empile || !liste.length) return;
+    empile--;
+    var m = liste[liste.length - 1];
+    var annuler = m.querySelector('.mou-actions-row .mou-btn.ghost');
+    if (m.id === 'mfJob') m.classList.remove('show');
+    else if (annuler) annuler.click();
+    else m.classList.remove('show');
+    if (!document.querySelector('.mou-modal.show')) document.body.style.overflow = '';
+  });
+  new MutationObserver(sync).observe(document.body, {childList: true, subtree: true, attributes: true, attributeFilter: ['class']});
+})();
