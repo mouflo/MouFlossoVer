@@ -32,6 +32,18 @@
         <div id="snMsg"></div>
     </div>
 
+    <div class="panel" data-onglet="Connexions">
+        <h2>🎬 Emby</h2>
+        <div class="sub">Après un rangement, MouFlossover demande à Emby de relire seulement les séries touchées. La clé se crée dans Emby : Tableau de bord → Clés API.</div>
+        <div class="field"><label for="emUrl">Adresse d'Emby</label>
+            <input type="text" id="emUrl" autocapitalize="off" spellcheck="false" placeholder="http://192.168.1.134:8096"></div>
+        <div class="field"><label for="emKey">Clé API</label>
+            <input type="password" id="emKey" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Laisse vide pour garder la clé actuelle"></div>
+        <div class="state" id="emState"></div>
+        <div class="row"><button class="btn ghost" id="emTest" type="button">Tester</button><button class="btn" id="emSave" type="button">Enregistrer</button></div>
+        <div id="emMsg"></div>
+    </div>
+
     <div class="panel" data-onglet="Dossiers">
         <h2>📁 Dossier des séries</h2>
         <div class="sub">Le dossier d'Emby qui contient un sous-dossier par série. MouFlossover refuse de toucher à un fichier situé en dehors.</div>
@@ -61,6 +73,17 @@
         say('snMsg', 'Vérification…', true); const r = await post('/api/settings/sonarr', corps(false));
         say('snMsg', r.message || r.error, r.ok);
         if (r.ok) { $('snKey').value = ''; const n = await api('/api/settings/sonarr'); $('snState').textContent = 'Clé actuelle : ' + (n.hint || 'définie'); }
+    });
+
+    const e = await api('/api/settings/emby');
+    $('emUrl').value = e.url || '';
+    $('emState').textContent = e.configured ? 'Clé actuelle : ' + (e.hint || 'définie') : 'Aucune clé définie';
+    const corpsE = test => ({url: $('emUrl').value, api_key: $('emKey').value, test});
+    $('emTest').addEventListener('click', async () => { say('emMsg', 'Test…', true); const r = await post('/api/settings/emby', corpsE(true)); say('emMsg', r.message || r.error, r.ok); });
+    $('emSave').addEventListener('click', async () => {
+        say('emMsg', 'Vérification…', true); const r = await post('/api/settings/emby', corpsE(false));
+        say('emMsg', r.message || r.error, r.ok);
+        if (r.ok) { $('emKey').value = ''; const n = await api('/api/settings/emby'); $('emState').textContent = 'Clé actuelle : ' + (n.hint || 'définie'); }
     });
 
     async function chemins() {

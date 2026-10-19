@@ -69,6 +69,32 @@ def init_app(app, base_dir, version_fn, engine):
         threading.Thread(target=engine.refresh, daemon=True).start()
         return jsonify({"ok": True, "message": msg + " Enregistré, l'état des crossovers se recalcule."})
 
+    @app.route("/api/settings/emby")
+    def emby_state():
+        cle = os.getenv("EMBY_API_KEY", "")
+        return jsonify({"url": os.getenv("EMBY_URL", ""), "configured": bool(cle),
+                        "hint": ("…" + cle[-4:]) if len(cle) >= 8 else ""})
+
+    @app.route("/api/settings/emby", methods=["POST"])
+    def emby_save():
+        import emby
+        body = request.get_json(silent=True) or {}
+        url = str(body.get("url", "")).strip().rstrip("/")
+        cle = str(body.get("api_key", "")).strip() or os.getenv("EMBY_API_KEY", "")
+        if not url.startswith(("http://", "https://")) or _BAD_CHARS & set(url) or " " in url:
+            return jsonify({"ok": False, "error": "L'adresse doit commencer par http:// ou https:// (ex. http://192.168.1.134:8096)."}), 400
+        if not cle or _BAD_CHARS & set(cle) or " " in cle:
+            return jsonify({"ok": False, "error": "Colle une clé API Emby valide (Emby → Tableau de bord → Clés API)."}), 400
+        ok, msg = emby.tester(url, cle)
+        if body.get("test"):
+            return jsonify({"ok": ok, "message": msg if ok else "", "error": "" if ok else msg}), (200 if ok else 400)
+        if not ok:
+            return jsonify({"ok": False, "error": msg + " Rien n'a été enregistré."}), 400
+        write_secret(secrets, "EMBY_URL", url)
+        write_secret(secrets, "EMBY_API_KEY", cle)
+        os.environ["EMBY_URL"], os.environ["EMBY_API_KEY"] = url, cle
+        return jsonify({"ok": True, "message": msg + " Enregistré."})
+
     @app.route("/api/settings/paths")
     def paths_state():
         d = engine.series_dir()

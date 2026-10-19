@@ -23,6 +23,7 @@ except ImportError:
 os.environ.setdefault("DATA_DIR", str(DATA_DIR))
 
 import diag
+import emby
 import engine
 
 BASE_VERSION = "1.0"
@@ -93,6 +94,11 @@ def api_plan(cid):
         return jsonify(engine.make_plan(c))
 
 
+def _dossiers(c):
+    """Dossiers des séries touchées par ce crossover, sans doublon."""
+    return list(dict.fromkeys(p["path"] for p in engine.part_list(c)))
+
+
 @app.route("/api/crossovers/<cid>/apply", methods=["POST"])
 def api_apply(cid):
     with engine.LOCK:
@@ -105,15 +111,21 @@ def api_apply(cid):
         res = engine.execute(c, plan, engine.load_state())
         logger.info("Crossover « %s » : %s", c["name"], "rangé" if res.get("ok") else "échec (%s)" % res.get("error"))
         engine.refresh()
+    if res.get("ok"):
+        res["emby"] = emby.actualiser(_dossiers(c))
+        logger.info("%s", res["emby"])
     return jsonify(res)
 
 
 @app.route("/api/crossovers/<cid>/undo", methods=["POST"])
 def api_undo(cid):
     with engine.LOCK:
+        c = engine.find_crossover(cid)
         res = engine.undo(cid, engine.load_state())
         logger.info("Annulation du crossover %s : %s", cid, "faite" if res.get("ok") else res.get("error"))
         engine.refresh()
+    if res.get("ok") and c:
+        res["emby"] = emby.actualiser(_dossiers(c))
     return jsonify(res)
 
 

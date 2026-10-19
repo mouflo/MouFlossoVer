@@ -162,7 +162,7 @@
         h('p', {class: 'mou-msub'}, "Aucun fichier n'est supprimé. Un journal est conservé : « Annuler le traitement » remettra tout comme avant."));
       if (!await dlg('Organiser ce crossover ?', body, 'Organiser')) return;
       var r = await post('/api/crossovers/' + c.id + '/apply');
-      if (r.ok) toast('Crossover organisé (' + r.actions + ' actions). Actualise la bibliothèque dans Emby pour voir le résultat.', 'ok'); else toast(r.error || 'Échec', 'err');
+      if (r.ok) toast('Crossover organisé (' + r.actions + ' actions). ' + (r.emby || ''), 'ok'); else toast(r.error || 'Échec', 'err');
       load(false);
     }}, 'Organiser ce crossover'));
     if (c.status !== 'ignored' && !c.blockers.length) {
@@ -179,7 +179,7 @@
     }
     if (c.applied) acts.append(h('button', {type: 'button', class: 'mou-btn danger', onclick: async function () {
       if (!await dlg('Annuler le traitement ?', h('p', {class: 'mou-msub'}, "Les copies créées seront supprimées, les fichiers renommés retrouveront leur nom d'origine et les informations modifiées seront restaurées."), 'Annuler le traitement', true)) return;
-      var r = await post('/api/crossovers/' + c.id + '/undo'); toast(r.ok ? 'Traitement annulé' : (r.error || 'Échec'), r.ok ? 'ok' : 'err'); load(false);
+      var r = await post('/api/crossovers/' + c.id + '/undo'); toast(r.ok ? 'Traitement annulé. ' + (r.emby || '') : (r.error || 'Échec'), r.ok ? 'ok' : 'err'); load(false);
     }}, 'Annuler le traitement'));
     acts.append(h('button', {type: 'button', class: 'mou-btn ghost small', onclick: async function () { await post('/api/crossovers/' + c.id + '/ignore', {ignored: c.status !== 'ignored'}); load(false); }}, c.status === 'ignored' ? 'Restaurer' : 'Mettre de côté'));
     return h('article', {class: 'mf-card', style: 'animation-delay:' + Math.min(idx * 40, 400) + 'ms'},
