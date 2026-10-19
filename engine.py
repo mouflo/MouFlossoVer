@@ -20,10 +20,13 @@ WINDOW_DAYS = 1
 FRANCHISES = {
     "Chicago": r"^chicago (fire|med|p\.?d|justice)",
     "FBI": r"^fbi",
+    "NCIS": r"^ncis",
     "Grey's / Station 19": r"^(grey's anatomy|station 19)",
 }
 TAGS = {"chicago fire": "FIRE", "chicago med": "MED", "chicago p.d.": "PD", "chicago justice": "JUSTICE",
         "fbi": "FBI", "fbi: most wanted": "MW", "fbi: international": "INTL",
+        "ncis": "NCIS", "ncis: los angeles": "LA", "ncis: new orleans": "NOLA", "ncis: hawai'i": "HAWAII",
+        "ncis: sydney": "SYDNEY", "ncis: origins": "ORIGINS",
         "grey's anatomy": "GREYS", "station 19": "S19"}
 PART_RX = re.compile(r"\((\d)\)\s*$")
 TAG_RX = re.compile(r"\.part(\d)\.?\(([A-Za-z0-9]+)\)")
@@ -107,14 +110,14 @@ def file_prefix(series_dir):
     for dp, dn, fn in os.walk(series_dir):
         dn[:] = [d for d in dn if d != "@eaDir"]
         for f in sorted(fn):
-            m = re.match(r"^(.+?)\.?S\d{2}E\d{2}", f)
+            m = re.match(r"^(.+?)\.?S\d{2}\.?E\d{2}", f)
             if f.endswith(".mkv") and m:
                 return m.group(1)
     return os.path.basename(series_dir)
 
 
 def release_suffix(stem_name):
-    m = re.match(r"^.*?S\d{2}E\d{2}(?:[.-]part(?:ie)?\d\.?(?:\([A-Za-z0-9]+\))?)?", stem_name)
+    m = re.match(r"^.*?S\d{2}\.?E\d{2}(?:[.-]part(?:ie)?\d\.?(?:\([A-Za-z0-9]+\))?)?", stem_name)
     return stem_name[m.end():] if m else ""
 
 
@@ -131,7 +134,7 @@ def find_own(series, part):
     if not sd:
         return {"state": "missing"}
     tag = TAGS.get(series["title"].lower(), "?")
-    rx = re.compile(r"S%02dE%02d(?!\d)" % (part["season"], part["ep"]))
+    rx = re.compile(r"S%02d[. _-]?E%02d(?!\d)" % (part["season"], part["ep"]))
     cands = []
     for f in sorted(os.listdir(sd)):
         if not f.endswith(".mkv") or not rx.search(f):
@@ -347,7 +350,7 @@ def make_plan(c):
         o = owners[(p["seriesId"], p["season"], p["ep"])]
         if o["state"] == "plain":
             stem = stem_of(o["file"])
-            pre = re.match(r"^(.*?S\d{2}E\d{2})", stem).group(1)
+            pre = re.match(r"^(.*?S\d{2}\.?E\d{2})", stem).group(1)
             new_stem = "%s.part%d(%s)%s" % (pre, p["part"], p["tag"], release_suffix(stem))
             own_ops.append({"kind": "rename_group", "dir": o["dir"], "from_stem": stem, "to_stem": new_stem,
                         "files": group_files(o["dir"], stem),
