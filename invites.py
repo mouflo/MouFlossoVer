@@ -201,6 +201,16 @@ def suggestions(c):
     for p in engine.part_list(c):
         saisons.setdefault(p["series"], set()).add(p["season"])
     out, vus = [], set()
+    import enwiki
+    par_nom = {wikimod.norm(s["title"]): s for s in series}
+    cles = {p["key"] for p in engine.part_list(c)}
+    for titre_page, pp in enwiki.crossovers().items():
+        ok, ko = enwiki.resoudre(pp, par_nom, engine.episodes_of)
+        if len(cles & {"%d-%d-%d" % (sr["id"], ep["seasonNumber"], ep["episodeNumber"]) for sr, ep, _ in ok}) >= 2:
+            for x in ko:
+                if x["season"] and x["episode"]:
+                    out.append({"title": x["series"].replace("ʻ", "'"), "season": x["season"], "episode": x["episode"],
+                                "line": "Wikipédia (anglais) : %s, partie %d du crossover" % (titre_page, x["n"])})
     for titre, ss in saisons.items():
         rec = engine.WIKI.get(titre)
         for cl in (rec or {}).get("claims", []):

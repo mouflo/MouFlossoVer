@@ -60,7 +60,8 @@ MIT, voir [LICENSE](LICENSE).
 
 1. **Titres Sonarr** (venus de TheTVDB) : « … (1) », « … (2) » le même jour dans plusieurs séries d'une même famille.
 2. **Résumés TheTVDB** (lus via Sonarr, analyse quotidienne) : « The crossover continues on Chicago Med S11E13… », « Part 2 of a crossover with Station 19 ».
-3. **Wikipédia fr** (analyse de toute la bibliothèque, gardée dans une base SQLite).
+3. **Wikipédia en anglais** : les pages de crossover (modèle « Infobox television crossover episode ») donnent série, saison, épisode et rang de chaque partie, parties absentes de votre bibliothèque comprises.
+4. **Wikipédia fr** (analyse de toute la bibliothèque, gardée dans une base SQLite).
 
 Chaque carte propose les liens pour vérifier, et ✏️ Corriger permet de changer l'ordre ou de retirer une partie.
 

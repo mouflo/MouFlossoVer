@@ -318,6 +318,17 @@ def build_crossovers():
                                  "url": "https://thetvdb.com/dereferrer/series/%d" % a["tvdbId"] if a.get("tvdbId") else ""}],
                        "parts": {(a["id"], ae["seasonNumber"], ae["episodeNumber"]): {"s": a, "e": ae, "part": partie_dite(h["line"]), "src": "tvdb"},
                                  (bser["id"], be["seasonNumber"], be["episodeNumber"]): {"s": bser, "e": be, "part": None, "src": "tvdb"}}})
+    import enwiki
+    for titre, pp in enwiki.crossovers().items():
+        ok, ko = enwiki.resoudre(pp, by_norm, episodes_de=episodes_of)
+        if len({sr["id"] for sr, _, _ in ok}) < 2:
+            continue
+        dates = [ep["airDate"] for _, ep, _ in ok if ep.get("airDate")]
+        ligne = " · ".join("Partie %d : %s S%02dE%02d « %s »" % (x["n"], x["series"], x["season"] or 0, x["episode"] or 0, x["title"]) for x in pp)
+        groups.append({"date": min(dates) if dates else "2000-01-01", "name": "",
+                       "wiki": [{"page": titre + " (Wikipédia anglais)", "line": ligne, "series": ok[0][0]["title"], "url": enwiki.lien(titre)}],
+                       "parts": {(sr["id"], ep["seasonNumber"], ep["episodeNumber"]): {"s": sr, "e": ep, "part": n, "src": "wikipedia"}
+                                 for sr, ep, n in ok}})
     merged = True
     while merged:
         merged = False
@@ -809,4 +820,6 @@ def start_background():
     invites.demarrer()
     import tvdb
     tvdb.demarrer()
+    import enwiki
+    enwiki.demarrer()
     threading.Thread(target=lambda: (time.sleep(20), wiki_scan()), daemon=True).start()

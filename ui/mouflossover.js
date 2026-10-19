@@ -179,12 +179,12 @@
     }
     async function chercher(terme) {
       etat.textContent = 'Recherche…'; var r = await api('/api/lookup?term=' + encodeURIComponent(terme));
-      etat.textContent = r.error || ''; montrer(r.items || []);
+      etat.textContent = r.error || ''; montrer(r.items || []); return r.items || [];
     }
     q.addEventListener('input', function () { clearTimeout(t); t = setTimeout(function () { if (q.value.trim().length > 1) chercher(q.value.trim()); }, 500); });
     var sg = await api('/api/crossovers/' + c.id + '/suggestions');
     (sg.items || []).forEach(function (x) {
-      sug.append(h('button', {type: 'button', class: 'mou-btn ghost mf-pick', onclick: function () { q.value = x.title; sa.value = x.season; ep.value = x.episode; chercher(x.title); }},
+      sug.append(h('button', {type: 'button', class: 'mou-btn ghost mf-pick', onclick: async function () { q.value = x.title; sa.value = x.season; ep.value = x.episode; var li = await chercher(x.title); if (li[0]) { chosen = li[0]; etat.textContent = 'Série choisie : ' + li[0].title + (li[0].year ? ' (' + li[0].year + ')' : ''); montrer(li); } }},
         h('b', {}, 'Wikipédia cite : ' + x.title + ' — saison ' + x.season + ', épisode ' + x.episode), h('small', {}, x.line || '')));
     });
     var body = h('div', {}, h('p', {class: 'mou-msub'}, "L'appli ajoute la série dans Sonarr dans un dossier de passage (invisible pour Emby, aucun autre épisode ne sera téléchargé), demande cet épisode, attend son arrivée puis le range avec le crossover. Le fichier n'est jamais supprimé : qBittorrent continue de le partager."),

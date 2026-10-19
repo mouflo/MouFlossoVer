@@ -106,3 +106,22 @@ class TestTvdb(unittest.TestCase):
         self.assertEqual(engine.partie_dite("Part 2 of a crossover with Station 19."), 2)
         self.assertEqual(engine.partie_dite("This is the third part of a major crossover"), 3)
         self.assertIsNone(engine.partie_dite("The crossover continues on Chicago Med"))
+
+
+class TestEnwiki(unittest.TestCase):
+    def test_modele_infobox(self):
+        import enwiki
+        texte = """{{Infobox television crossover episode
+| series1         = [[NCIS (TV series)|NCIS]]
+| episode_title1  = Too Many Cooks
+| season1         = 20
+| episode_no1     = 10
+| series2         = [[NCIS: Hawaiʻi]]
+| episode_title2  = Hana
+| season2         = 2
+| episode_no2     = 10
+| airdate_overall = {{start date|2023|1|9}}
+}}
+Texte."""
+        p = enwiki.analyser("NCIS crossover event", texte)
+        self.assertEqual([(x["n"], x["series"], x["season"], x["episode"]) for x in p], [(1, "NCIS", 20, 10), (2, "NCIS: Hawaiʻi", 2, 10)])
