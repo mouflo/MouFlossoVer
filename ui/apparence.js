@@ -32,7 +32,7 @@
       '<div class="mou-msub">Choisis un style, puis ajuste les couleurs si tu veux. Ça ne change que ton affichage.</div>' +
       '<div class="app-liste">' + liste + '</div>' +
       '<h4 style="margin:14px 0 6px">Couleurs</h4><div class="app-cols">' + cols + '</div>' +
-      '<div class="mou-actions-row"><button type="button" class="mou-btn" id="appSave">Enregistrer</button>' +
+      '<div class="mou-actions-row app-barre"><button type="button" class="mou-btn" id="appSave">Enregistrer</button>' +
       '<button type="button" class="mou-btn ghost" id="appCoulReset">Couleurs d\'origine</button>' +
       '<button type="button" class="mou-btn ghost" id="appReset">↩︎ Tout remettre à l\'origine</button></div>' +
       '<details style="margin-top:14px"><summary>🧪 Essayer un skin brouillon (CSS)</summary>' +

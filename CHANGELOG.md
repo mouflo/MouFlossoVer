@@ -6,7 +6,8 @@ La version affichée dans l'appli est `v1.0.N (hash)` : N est le nombre de commi
 Première version installée comme les autres applis MouFl (service systemd, dépôt GitHub, mise à jour de nuit).
 
 - Interface au style commun MouFl (en-tête, connexion, ⚙️ Réglages, 🩺 Journal) et **skins** (Violet cinéma, Océan, Papier) choisis par compte.
-- Nouveau logo : deux flèches qui se croisent.
+- Nouveau logo : deux flèches qui se croisent, **aux couleurs du skin en cours** (icône de l'onglet comprise).
+- Fenêtre 🎨 Apparence : elle défile sur téléphone et le bouton Enregistrer reste visible en bas.
 - Page Réglages : connexion à Sonarr (avec test), dossier des séries, analyse Wikipédia, redémarrage.
 - Mise à jour automatique reportée tant qu'un rangement ou une analyse est en cours (`/api/occupe`).
 - Sécurité : MouFlossover refuse de toucher à un fichier situé hors du dossier des séries réglé.

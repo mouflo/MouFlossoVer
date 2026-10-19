@@ -12,6 +12,20 @@ MouFlossover repère ces épisodes, prépare le rangement, te le montre, et ne f
 
 Les copies sont de vrais fichiers séparés (pas des liens), pour que chaque série reste autonome.
 
+## Captures
+
+| Accueil (ordinateur) | Crossovers bloqués |
+|---|---|
+| ![Accueil](docs/screenshots/bureau-accueil.png) | ![Bloqués](docs/screenshots/bureau-bloques.png) |
+
+| Téléphone : accueil | Téléphone : plan détaillé |
+|---|---|
+| ![Accueil mobile](docs/screenshots/mobile-accueil.png) | ![Plan mobile](docs/screenshots/mobile-plan.png) |
+
+Le logo et l'interface prennent les couleurs du skin choisi (vert d'origine, Violet cinéma, Océan, Papier) :
+
+![Skins](docs/screenshots/skins.png)
+
 ## Pages
 
 - **Accueil** : crossovers « Prêts à organiser », « Bloqués » (avec la raison en français et quoi faire), « Terminés », « Mis de côté ».
