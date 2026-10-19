@@ -99,5 +99,15 @@ class TestRangement(unittest.TestCase):
         self.assertTrue(any("pas encore téléchargé" in b for b in engine.make_plan(c)["blockers"]))
 
 
+    def test_partie_manquante_bloque(self):
+        c = crossover()
+        for v in c["parts"].values():
+            if v["part"] == 2:
+                v["part"] = 3        # la partie 2 est dans une série absente de la bibliothèque
+        c["id"] = "trou"
+        plan = engine.make_plan(c)
+        self.assertTrue(any("Partie 2 manquante" in b for b in plan["blockers"]))
+
+
 if __name__ == "__main__":
     unittest.main()

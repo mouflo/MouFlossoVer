@@ -400,6 +400,11 @@ def make_plan(c):
     own_ops = []     # renommages des fichiers d'origine : toujours APRÈS les copies, qui lisent encore l'ancien nom
     owners = {}
     sd = series_dir()
+    numeros = sorted(p["part"] for p in parts)
+    trous = [n for n in range(1, numeros[-1] + 1) if n not in numeros] if numeros else []
+    if trous and c["id"] not in load_state().get("done", {}):
+        blockers.append("Partie %s manquante : cette partie est dans une série absente de ta bibliothèque (ou un épisode inconnu de Sonarr)"
+                        % ", ".join(str(n) for n in trous))
     for p in parts:
         sr = {"title": p["series"], "path": p["path"]}
         if sd and not (p["path"].rstrip("/") + "/").startswith(sd.rstrip("/") + "/"):

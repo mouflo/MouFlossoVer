@@ -58,6 +58,7 @@
 
   function explainBlocker(b) {
     var m;
+    if (/^Partie .* manquante/.test(b)) return {icon: '🧩', t: b.split(' : ')[0].replace(/^Partie/, 'Il manque la partie'), d: "Cette partie du crossover vient d'une série que tu n'as pas dans Sonarr (ou d'un épisode que Sonarr ne connaît pas). Ajoute la série dans Sonarr, puis « Actualiser ». Si tu préfères ranger quand même les parties que tu as, utilise « Corriger » puis « Enregistrer » : les parties seront renumérotées sans trou.", files: []};
     if (/pas encore téléchargé/.test(b)) return {icon: '⏳', t: 'Épisode pas encore téléchargé', d: b.split(' : ')[0] + " n'est pas encore dans la bibliothèque. Sonarr doit d'abord le récupérer, puis clique sur « Actualiser ».", files: []};
     if (/introuvable sur le disque/.test(b)) return {icon: '❓', t: 'Fichier introuvable', d: b.split(' : ')[0] + " : Sonarr le croit présent mais je ne le trouve pas dans le dossier de la saison.", files: []};
     if ((m = b.match(/^(.*?) : plusieurs fichiers candidats \((.*)\)$/))) return {icon: '⚠️', t: 'Deux fichiers pour le même épisode', d: m[1] + " : je ne sais pas lequel est le bon. Supprime ou renomme le doublon sur le disque, puis clique sur « Actualiser ».", files: m[2].split(/\.mkv, /).map(function (f) { return f.replace(/\.mkv$/, ''); })};
