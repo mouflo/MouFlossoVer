@@ -209,6 +209,22 @@ def api_invite(cid):
     return jsonify(res), (200 if res.get("ok") else 409)
 
 
+@app.route("/api/episodes/<int:eid>/telecharger", methods=["POST"])
+def api_telecharger(eid):
+    """Épisode d'une série déjà dans Sonarr mais pas encore téléchargé : on le surveille et on lance la recherche."""
+    try:
+        ep = engine.sonarr("GET", "/episode/%d" % eid)
+        if not ep:
+            return jsonify({"ok": False, "error": "Épisode introuvable chez Sonarr."}), 404
+        if not ep.get("monitored"):
+            ep["monitored"] = True
+            engine.sonarr("PUT", "/episode/%d" % eid, ep)
+        engine.sonarr("POST", "/command", {"name": "EpisodeSearch", "episodeIds": [eid]})
+    except Exception as ex:
+        return jsonify({"ok": False, "error": "Sonarr ne répond pas : %s" % ex}), 502
+    return jsonify({"ok": True})
+
+
 @app.route("/api/invites/<gid>/<action>", methods=["POST"])
 def api_invite_action(gid, action):
     import invites

@@ -416,6 +416,9 @@ def lisible(ligne, maxi=190):
     """Passage de Wikipédia sans le code de la page : liens [[a|b]] → b, préfixes de liste et « commentaire = » retirés."""
     t = re.sub(r"\[\[(?:[^\]|]*\|)?([^\]]*)\]\]", r"\1", ligne or "")
     t = re.sub(r"\[\[[^\]]*$", "", t)          # lien coupé en fin de passage
+    t = re.sub(r"\{\{[Hh]eure\|(\d+)(?:\|(\d+))?\}\}", lambda m: m.group(1) + " h" + (" " + m.group(2) if m.group(2) else ""), t)
+    t = re.sub(r"\{\{(?:[^{}|]*\|)*([^{}|]*)\}\}", r"\1", t)   # autres modèles : on garde le dernier texte
+    t = re.sub(r"\{\{[^}]*$", "", t)            # modèle coupé en fin de passage
     t = re.sub(r"'{2,}", "", t)
     t = re.sub(r"^[\s|#*:→-]+", "", t)
     t = re.sub(r"^(commentaire|titre)\s*=\s*", "", t, flags=re.I)
