@@ -181,6 +181,22 @@ def find_own(series, part):
     return {"state": "tagged" if cands[0][1] else "plain", "dir": sd, "file": cands[0][0]}
 
 
+ALLITEMS = []
+
+
+def slot_pref(c, sid):
+    """Premier numéro de spécial voulu pour la série sid dans ce crossover : 100 pour son crossover le plus ancien,
+    puis on avance de 1 par copie des crossovers précédents (ordre des dates)."""
+    n = SLOT_START
+    for o in ALLITEMS:
+        if o["id"] == c["id"] or (o["date"], o["id"]) >= (c["date"], c["id"]):
+            continue
+        ids = [v["s"]["id"] for v in o["parts"].values()]
+        if sid in ids:
+            n += sum(1 for i in ids if i != sid)
+    return n
+
+
 def used_slots(series_path):
     used = set()
     for dp, dn, fn in os.walk(series_path):
@@ -301,6 +317,7 @@ def build_crossovers():
         cid = hashlib.sha1("|".join(sorted("%d-%d-%d" % k for k in g["parts"])).encode()).hexdigest()[:10]
         items.append({"id": cid, "franchise": fr, "date": g["date"], "parts": g["parts"], "name": name, "wiki": g.get("wiki", [])})
     items.sort(key=lambda c: c["date"], reverse=True)
+    ALLITEMS[:] = items
     return items, series
 
 
@@ -440,7 +457,7 @@ def make_plan(c):
                                     "episode": int(sm.group(1)), "airs": list(airs),
                                     "label": "Position de %s (part %d) dans %s" % (p["series"], p["part"], t["series"])})
                     continue
-                n = next(i for i in range(SLOT_START, 999) if i not in used)
+                n = next(i for i in range(slot_pref(c, sid), 999) if i not in used)
                 used.add(n)
                 new_est = "%s.S00E%02d.part%d(%s)%s" % (prefix, n, p["part"], p["tag"], release_suffix(est))
                 ops.append({"kind": "rename_group", "dir": sdir, "from_stem": est, "to_stem": new_est,
@@ -449,7 +466,7 @@ def make_plan(c):
                 ops.append({"kind": "patch_nfo", "path": os.path.join(sdir, new_est + ".nfo"), "season": 0, "episode": n,
                             "airs": list(airs), "label": "Corriger le NFO de %s (part %d)" % (p["series"], p["part"])})
                 continue
-            n = next(i for i in range(SLOT_START, 999) if i not in used)
+            n = next(i for i in range(slot_pref(c, sid), 999) if i not in used)
             used.add(n)
             new_stem = "%s.S00E%02d.part%d(%s)%s" % (prefix, n, p["part"], p["tag"], release_suffix(ow_stem))
             dst_exists = [f for f in group_files(ow["dir"], ow_stem)
