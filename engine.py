@@ -340,6 +340,23 @@ def build_crossovers():
                        "wiki": [{"page": titre + " (Wikipédia anglais)", "line": ligne, "series": ok[0][0]["title"], "url": enwiki.lien(titre)}],
                        "parts": {(sr["id"], ep["seasonNumber"], ep["episodeNumber"]): {"s": sr, "e": ep, "part": n, "src": "wikipedia"}
                                  for sr, ep, n in ok}})
+    # Crossovers ajoutés à la main (état « manuels ») : ils remplacent toute détection automatique qui touche les mêmes épisodes
+    par_id = {s["id"]: s for s in series}
+    manuels = []
+    for m in load_state().get("manuels", []):
+        res = {}
+        for sec, cle in (("parts", False), ("refs", True)):
+            for n, pp in enumerate(m.get(sec, []), 1):
+                s_ = par_id.get(pp["sid"])
+                e_ = s_ and next((x for x in episodes_of(s_["id"]) if x["seasonNumber"] == pp["season"] and x["episodeNumber"] == pp["ep"]), None)
+                if e_:
+                    res[(s_["id"], pp["season"], pp["ep"])] = {"s": s_, "e": e_, "part": 0 if cle else n, "src": "manuel", **({"ref": True} if cle else {})}
+        if not any(not v.get("ref") for v in res.values()) or len({v["s"]["id"] for v in res.values()}) < 2:
+            continue
+        dates = [v["e"]["airDate"] for v in res.values() if v["e"].get("airDate")]
+        manuels.append({"date": min(dates) if dates else "2000-01-01", "parts": res, "name": m.get("name", ""), "manuel": m["id"], "wiki": []})
+    pris = set().union(*[set(g["parts"]) for g in manuels]) if manuels else set()
+    groups = manuels + [g for g in groups if not (set(g["parts"]) & pris)]
     merged = True
     while merged:
         merged = False
@@ -395,7 +412,7 @@ def build_crossovers():
             for i, (k, v) in enumerate(sorted([kv for kv in parts.items() if not kv[1].get("ref")], key=lambda kv: (rang.get("%d-%d-%d" % kv[0], 999), kv[1]["part"]))):
                 v["part"] = i + 1
         items.append({"id": cid, "franchise": fr, "date": g["date"], "parts": parts, "name": name, "wiki": g.get("wiki", []),
-                      "fixed": bool(fx)})
+                      "fixed": bool(fx), "manuel": g.get("manuel")})
     items.sort(key=lambda c: c["date"], reverse=True)
     ALLITEMS[:] = items
     return items, series
@@ -663,7 +680,7 @@ def refresh():
                             "status": status, "parts": [{k: v for k, v in p.items() if k != "path"} for p in parts if not p["ref"]],
                             "refs": [{"series": p["series"], "season": p["season"], "ep": p["ep"], "title": p["title"]} for p in parts if p["ref"]],
                             "opCount": len(plan["ops"]), "blockers": plan["blockers"], "warnings": plan["warnings"],
-                            "applied": c["id"] in st["done"], "wiki": wiki_sources(c), "fixed": c.get("fixed", False),
+                            "applied": c["id"] in st["done"], "wiki": wiki_sources(c), "fixed": c.get("fixed", False), "manuel": c.get("manuel"),
                             "invites": invites.pour_carte({p["key"] for p in parts})})
             CACHE.update({"items": out, "updated": datetime.datetime.now().isoformat(timespec="seconds"), "error": None})
             if out and not WIKISTATE["running"]:

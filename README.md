@@ -71,3 +71,7 @@ Chaque carte propose les liens pour vérifier, et ✏️ Corriger permet de chan
 `Invites-MouFlossover` à côté du dossier des séries, donc invisible pour Emby), ne surveille que cet épisode, attend son
 arrivée puis le range avec le crossover. Rien n'est supprimé : le fichier reste en place (lien dur, donc le partage
 qBittorrent continue) et la série invitée reste dans Sonarr sans épisode surveillé.
+
+## Crossover ajouté à la main
+
+Le bouton « ➕ Ajouter » décrit un crossover que la détection automatique n a pas vu : on choisit les séries, saisons et épisodes dans l ordre. Pour un crossover sur un seul épisode (des personnages d une autre série y apparaissent, sans suite), on ajoute l autre série comme « repère » : l épisode y est copié juste avant l épisode repère. Un crossover manuel remplace toute détection automatique qui touche les mêmes épisodes et peut être supprimé tant qu il n est pas rangé.

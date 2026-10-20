@@ -37,7 +37,7 @@
       return j;
     } catch (e) { return {error: 'Serveur injoignable'}; }
   }
-  function post(p, b) { return api(p, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(b || {})}); }
+  function post(p, b, methode) { return api(p, {method: methode || 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(b || {})}); }
   function toast(msg, kind) { if (window.MouToast) window.MouToast(msg, kind || 'ok'); else alert(msg); }
   var pad = function (n) { return String(n).padStart(2, '0'); };
   function fmtDate(d) { return new Date(d + 'T12:00:00').toLocaleDateString('fr-FR', {day: 'numeric', month: 'long', year: 'numeric'}); }
@@ -208,6 +208,55 @@
     toast(r.ok ? "Demande envoyée : l'appli s'occupe de tout." : (r.error || 'Échec'), r.ok ? 'ok' : 'err'); load(false);
   }
 
+  // Crossover décrit à la main (quand la détection automatique n'a rien vu)
+  async function ajouterManuel() {
+    var rep = await api('/api/series');
+    if (rep.error) { toast(rep.error, 'err'); return; }
+    var m = {name: '', parts: [{sid: 0, season: '', ep: ''}, {sid: 0, season: '', ep: ''}], refs: []};
+    while (true) {
+      var liste = function (tab, ref) {
+        var box = h('div', {class: 'mf-fix'});
+        function dessiner() {
+          box.replaceChildren.apply(box, tab.map(function (o, i) {
+            var info = h('small', {class: 'mf-note'}, '');
+            function verifier() {
+              info.textContent = '';
+              if (!o.sid || o.season === '' || !o.ep) return;
+              api('/api/episode?sid=' + o.sid + '&season=' + o.season + '&ep=' + o.ep).then(function (r) {
+                info.textContent = r.ok ? '« ' + (r.title || 'sans titre') + ' » · ' + (r.hasFile ? 'fichier présent' : 'pas encore téléchargé') : '⚠️ ' + (r.error || '');
+              });
+            }
+            var sel = h('select', {class: 'mou-input', onchange: function () { o.sid = parseInt(sel.value, 10) || 0; verifier(); }},
+              h('option', {value: ''}, '— choisir la série —'),
+              rep.series.map(function (x) { var op = h('option', {value: String(x.id)}, x.title); if (x.id === o.sid) op.selected = true; return op; }));
+            var sa = h('input', {type: 'number', min: '0', class: 'mou-input', placeholder: 'Saison', value: o.season === '' ? null : String(o.season), oninput: function () { o.season = sa.value === '' ? '' : parseInt(sa.value, 10); verifier(); }});
+            var ep = h('input', {type: 'number', min: '1', class: 'mou-input', placeholder: 'Épisode', value: o.ep === '' ? null : String(o.ep), oninput: function () { o.ep = ep.value === '' ? '' : parseInt(ep.value, 10); verifier(); }});
+            verifier();
+            return h('div', {class: 'mf-manrow'},
+              h('div', {class: 'mf-mantop'}, h('b', {}, ref ? '📍 Repère' : 'Partie ' + (i + 1)),
+                h('span', {}, i > 0 && !ref ? h('button', {type: 'button', class: 'mou-btn ghost small', onclick: function () { tab.splice(i - 1, 0, tab.splice(i, 1)[0]); dessiner(); }}, '▲') : null,
+                  (ref || tab.length > 1) ? h('button', {type: 'button', class: 'mou-btn ghost small', onclick: function () { tab.splice(i, 1); dessiner(); }}, 'Retirer') : null)),
+              sel, h('div', {class: 'mf-manep'}, sa, ep), info);
+          }));
+        }
+        dessiner();
+        return {box: box, add: function () { tab.push({sid: 0, season: '', ep: ''}); dessiner(); }};
+      };
+      var lp = liste(m.parts, false), lr = liste(m.refs, true);
+      var nom = h('input', {type: 'text', class: 'mou-input', placeholder: 'Nom (facultatif)', value: m.name || null, oninput: function () { m.name = nom.value; }});
+      var body = h('div', {}, h('p', {class: 'mou-msub'}, "Indique les épisodes du crossover dans l'ordre. Si un épisode d'une série fait apparaître des personnages d'une autre série qui n'a pas de suite, ajoute cette autre série en « repère » : l'épisode y sera copié juste avant l'épisode repère."),
+        nom, h('div', {class: 'mf-cap'}, 'Parties du crossover'), lp.box,
+        h('button', {type: 'button', class: 'mou-btn ghost small', onclick: lp.add}, '➕ Ajouter une partie'),
+        h('div', {class: 'mf-cap'}, 'Série qui reçoit l\'épisode sans en avoir la suite (facultatif)'), lr.box,
+        h('button', {type: 'button', class: 'mou-btn ghost small', onclick: lr.add}, '➕ Ajouter une série qui reçoit'));
+      if (!await dlg('Ajouter un crossover à la main', body, 'Ajouter')) return;
+      var net = function (t) { return t.filter(function (o) { return o.sid && o.season !== '' && o.ep; }).map(function (o) { return {sid: o.sid, season: o.season, ep: o.ep}; }); };
+      var r = await post('/api/manuels', {name: m.name, parts: net(m.parts), refs: net(m.refs)});
+      if (r.ok) { toast('Crossover ajouté : il apparaît dans la liste.', 'ok'); load(false); return; }
+      toast(r.error || 'Échec', 'err');
+    }
+  }
+
   // Correction à la main : changer l'ordre des parties ou en retirer une
   async function corriger(c) {
     var lignes = c.parts.map(function (p) { return {key: p.key, p: p, out: false}; });
@@ -243,6 +292,7 @@
           p.source === 'wikipedia' ? h('span', {class: 'mf-chip w', title: 'Repéré grâce à Wikipédia'}, 'repéré via Wikipédia') : null,
           p.source === 'tvdb' ? h('span', {class: 'mf-chip w', title: 'Repéré grâce au résumé TheTVDB'}, 'repéré via TheTVDB') : null,
           p.source === 'invite' ? h('span', {class: 'mf-chip w', title: 'Série ajoutée dans le dossier de passage'}, 'épisode invité') : null,
+          p.source === 'manuel' ? h('span', {class: 'mf-chip w', title: 'Crossover décrit à la main'}, 'ajouté à la main') : null,
           p.dl ? h('span', {class: 'mf-chip w'}, '⏳ ' + p.dl) : null,
           (!p.hasFile && !p.dl && p.source !== 'invite' && !/Invites/i.test(p.path || '')) ? h('button', {type: 'button', class: 'mou-btn ghost small mf-dl', onclick: async function (ev) {
             var b = ev.currentTarget; b.disabled = true;
@@ -267,6 +317,12 @@
           g.status !== 'pret' ? h('button', {type: 'button', class: 'mou-btn ghost small', onclick: async function () { await post('/api/invites/' + g.id + '/cancel'); load(false); }}, 'Annuler la demande') : null));
     })) : null;
     var acts = h('div', {class: 'mf-actions'});
+    if (c.manuel && !c.applied) acts.append(h('button', {type: 'button', class: 'mou-btn ghost small', onclick: async function () {
+      var b = h('p', {class: 'mou-msub'}, '« ' + c.name + ' » sera retiré de la liste. Tes fichiers ne sont pas touchés.');
+      if (!await dlg('Supprimer ce crossover manuel ?', b, 'Supprimer', true)) return;
+      var r = await post('/api/manuels/' + c.manuel, {}, 'DELETE');
+      toast(r.ok ? 'Crossover retiré' : (r.error || 'Échec'), r.ok ? 'ok' : 'err'); load(false);
+    }}, '🗑️ Supprimer'));
     if (c.status === 'todo') acts.append(h('button', {type: 'button', class: 'mou-btn', onclick: async function () {
       var body = h('div', {}, h('p', {class: 'mou-msub'}, '« ' + c.name + ' » : ' + c.opCount + ' action(s) vont être exécutées sur tes fichiers (renommages, copies, informations Emby, réglage Sonarr).'),
         h('p', {class: 'mou-msub'}, "Aucun fichier n'est supprimé. Un journal est conservé : « Annuler le traitement » remettra tout comme avant."));
@@ -315,6 +371,7 @@
   function init() {
     $('#mfQ').addEventListener('input', function (e) { st.q = e.target.value; render(); });
     $('#mfRefresh').addEventListener('click', function () { load(true); });
+    $('#mfAdd').addEventListener('click', ajouterManuel);
     try { if (localStorage.getItem('mf-help') === 'hidden') $('#mfHelp').style.display = 'none'; } catch (e) {}
     $('#mfHelpX').addEventListener('click', function () { $('#mfHelp').style.display = 'none'; try { localStorage.setItem('mf-help', 'hidden'); } catch (e) {} });
     load(false); loadWiki(); reprise();

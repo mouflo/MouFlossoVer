@@ -133,3 +133,8 @@ body.mou-skin button.mf-pick.on, .mou-btn.ghost.mf-pick.on { border-color:var(--
 .mou-modal .mou-box > .mou-actions-row { position:sticky; bottom:-18px; z-index:5; background:var(--card); padding:12px 0 6px; margin-top:12px; border-top:1px solid var(--line); }
 .mf-fix { max-height:none; }
 .mf-dl { margin-top:8px; display:block; }
+.mf-manrow { background:var(--field); border:1px solid var(--line); border-radius:12px; padding:10px; margin-bottom:10px; display:grid; gap:8px; }
+.mf-mantop { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+.mf-mantop span { display:flex; gap:6px; }
+.mf-manep { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.mf-manrow select, .mf-manrow input { width:100%; box-sizing:border-box; }

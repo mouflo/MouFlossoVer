@@ -240,6 +240,73 @@ def api_invite_action(gid, action):
     return jsonify({"ok": True})
 
 
+@app.route("/api/series")
+def api_series():
+    """Séries de la bibliothèque (pour choisir à la main les parties d'un crossover)."""
+    try:
+        res = sorted(({"id": x["id"], "title": x["title"]} for x in engine.sonarr("GET", "/series")), key=lambda x: x["title"].lower())
+    except Exception as ex:
+        return jsonify({"error": "Sonarr ne répond pas : %s" % ex}), 502
+    return jsonify({"series": res})
+
+
+@app.route("/api/episode")
+def api_episode():
+    try:
+        sid, sa, ep = int(request.args["sid"]), int(request.args["season"]), int(request.args["ep"])
+    except (KeyError, ValueError):
+        return jsonify({"ok": False}), 400
+    e = next((x for x in engine.episodes_of(sid) if x["seasonNumber"] == sa and x["episodeNumber"] == ep), None)
+    if not e:
+        return jsonify({"ok": False, "error": "Cet épisode n'existe pas dans Sonarr."})
+    return jsonify({"ok": True, "title": e.get("title") or "", "airDate": e.get("airDate") or "", "hasFile": bool(e.get("hasFile"))})
+
+
+def _ligne_manuelle(x):
+    try:
+        sid, sa, ep = int(x["sid"]), int(x["season"]), int(x["ep"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if sa < 0 or ep < 1:
+        return None
+    return {"sid": sid, "season": sa, "ep": ep}
+
+
+@app.route("/api/manuels", methods=["POST"])
+def api_manuel_creer():
+    """Crossover décrit à la main : une liste de parties (dans l'ordre) et, au besoin, des séries qui le reçoivent sans en avoir la suite."""
+    import uuid
+    body = request.get_json(silent=True) or {}
+    parts = [_ligne_manuelle(x) for x in (body.get("parts") or [])][:12]
+    refs = [_ligne_manuelle(x) for x in (body.get("refs") or [])][:6]
+    if not parts or None in parts or None in refs:
+        return jsonify({"ok": False, "error": "Indique au moins une partie, avec série, saison et épisode."}), 400
+    if len({x["sid"] for x in parts + refs}) < 2:
+        return jsonify({"ok": False, "error": "Il faut au moins deux séries différentes (une partie dans une série, et soit une autre partie, soit une série qui reçoit l'épisode)."}), 400
+    for x in parts + refs:
+        if not any(e["seasonNumber"] == x["season"] and e["episodeNumber"] == x["ep"] for e in engine.episodes_of(x["sid"])):
+            return jsonify({"ok": False, "error": "Un des épisodes n'existe pas dans Sonarr (S%02dE%02d)." % (x["season"], x["ep"])}), 400
+    with engine.LOCK:
+        st = engine.load_state()
+        st.setdefault("manuels", []).append({"id": uuid.uuid4().hex[:8], "name": str(body.get("name", "")).strip()[:80], "parts": parts, "refs": refs})
+        engine.save_state(st)
+    engine.refresh()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/manuels/<mid>", methods=["DELETE"])
+def api_manuel_supprimer(mid):
+    c = next((i for i in engine.CACHE.get("items", []) if i.get("manuel") == mid), None)
+    if c and c.get("applied"):
+        return jsonify({"ok": False, "error": "Ce crossover est déjà rangé : fais d'abord « Annuler le traitement »."}), 409
+    with engine.LOCK:
+        st = engine.load_state()
+        st["manuels"] = [m for m in st.get("manuels", []) if m["id"] != mid]
+        engine.save_state(st)
+    engine.refresh()
+    return jsonify({"ok": True})
+
+
 @app.route("/api/crossovers/<cid>/fix", methods=["POST"])
 def api_fix(cid):
     """Correction à la main : ordre des parties et parties à retirer (ou retour à la détection automatique)."""
