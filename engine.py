@@ -198,7 +198,7 @@ def slot_pref(c, sid):
             continue
         ids = [v["s"]["id"] for v in o["parts"].values()]
         if sid in ids:
-            n += sum(1 for v in o["parts"].values() if v["s"]["id"] != sid and not v.get("ref"))
+            n += sum(1 for v in o["parts"].values() if v["s"]["id"] != sid and not v.get("ref") and not v.get("nocopy"))
     return n
 
 
@@ -350,7 +350,8 @@ def build_crossovers():
                 s_ = par_id.get(pp["sid"])
                 e_ = s_ and next((x for x in episodes_of(s_["id"]) if x["seasonNumber"] == pp["season"] and x["episodeNumber"] == pp["ep"]), None)
                 if e_:
-                    res[(s_["id"], pp["season"], pp["ep"])] = {"s": s_, "e": e_, "part": 0 if cle else n, "src": "manuel", **({"ref": True} if cle else {})}
+                    res[(s_["id"], pp["season"], pp["ep"])] = {"s": s_, "e": e_, "part": 0 if cle else n, "src": "manuel", **({"ref": True} if cle else {}),
+                                                         **({"nocopy": True} if pp.get("nocopy") else {})}
         if not any(not v.get("ref") for v in res.values()) or len({v["s"]["id"] for v in res.values()}) < 2:
             continue
         dates = [v["e"]["airDate"] for v in res.values() if v["e"].get("airDate")]
@@ -408,6 +409,8 @@ def build_crossovers():
             parts = {k: v for k, v in parts.items() if "%d-%d-%d" % k not in fx.get("exclude", [])}
             if len({v["s"]["id"] for v in parts.values()}) < 2:
                 continue
+            for k, v in parts.items():
+                v["nocopy"] = "%d-%d-%d" % k in fx.get("nocopy", [])
             rang = {key: i for i, key in enumerate(fx.get("order", []))}
             for i, (k, v) in enumerate(sorted([kv for kv in parts.items() if not kv[1].get("ref")], key=lambda kv: (rang.get("%d-%d-%d" % kv[0], 999), kv[1]["part"]))):
                 v["part"] = i + 1
@@ -522,7 +525,7 @@ def part_list(c):
                     "part": v["part"], "hasFile": bool(e.get("hasFile")), "episodeId": e["id"],
                     "monitored": bool(e.get("monitored")), "source": v["src"], "path": s["path"],
                     "overview": e.get("overview") or "", "airDate": e.get("airDate") or "",
-                    "dl": dl_etat(e["id"], bool(e.get("hasFile"))), "ref": bool(v.get("ref"))})
+                    "dl": dl_etat(e["id"], bool(e.get("hasFile"))), "ref": bool(v.get("ref")), "nocopy": bool(v.get("nocopy"))})
     return out
 
 
@@ -592,7 +595,7 @@ def make_plan(c):
         prefix = file_prefix(spath)
         used = used_slots(spath) | allocated.setdefault(sid, set())
         for p in parts:
-            if p["seriesId"] == sid or p["ref"]:
+            if p["seriesId"] == sid or p["ref"] or p["nocopy"]:      # « nocopy » : cette partie reste dans sa série
                 continue
             ow = owners[(p["seriesId"], p["season"], p["ep"])]
             ow_stem = stem_of(ow["file"])

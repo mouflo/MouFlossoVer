@@ -152,3 +152,25 @@ class TestEpisodeUnique(unittest.TestCase):
         patch = [o for o in plan["ops"] if o["kind"] == "patch_nfo"]
         self.assertEqual([o["airs"] for o in patch], [[7, 19]])
         self.assertEqual(len([o for o in plan["ops"] if o["kind"] == "rename_group"]), 1)      # seule la série qui a la partie est renommée
+import sys; sys.path.insert(0,"/opt/mouflossover")
+import wiki
+L=["   L'épisode 12, marque un crossover avec ''[[NCIS : Nouvelle-Orléans]]'' qui se termine dans le douzième épisode de la deuxième saison.",
+"   | commentaire = *Première partie d'un cross-over qui se termine dans le douzième épisode de la [[Saison 2 de NCIS : Nouvelle-Orléans|deuxième saison de ''NCIS : Nouvelle-Orléans'']].",
+"| 12 || Sister City (Deuxième partie<ref group=\"Note\">Cet épisode est en fait la conclusion de l'épisode 13x12 de la série ''[[NCIS : Enquêtes spéciales]]''.</ref>) || Mardi"]
+for l in L: print(wiki.extract_claims("X",{"p":l}))
+
+
+class TestSensUnique(unittest.TestCase):
+    def test_partie_qui_reste_dans_sa_serie(self):
+        import test_engine as te
+        c = te.crossover()
+        te.engine.sonarr = lambda *a, **k: {"monitored": True}
+        deux = te.engine.make_plan(c)
+        self.assertEqual(len([o for o in deux["ops"] if o["kind"] == "copy_group"]), 2)
+        c2 = te.crossover()
+        c2["parts"][(2, 11, 13)]["nocopy"] = True          # la partie de Chicago Med reste chez elle
+        un = te.engine.make_plan(c2)
+        copies = [o for o in un["ops"] if o["kind"] == "copy_group"]
+        self.assertEqual(len(copies), 1)
+        self.assertIn("Chicago Med", copies[0]["dir"])       # la partie de Fire est copiée dans Med, pas l'inverse
+        self.assertEqual(len([o for o in un["ops"] if o["kind"] == "rename_group"]), 2)

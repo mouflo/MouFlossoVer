@@ -269,7 +269,7 @@ def _ligne_manuelle(x):
         return None
     if sa < 0 or ep < 1:
         return None
-    return {"sid": sid, "season": sa, "ep": ep}
+    return {"sid": sid, "season": sa, "ep": ep, "nocopy": bool(x.get("nocopy"))}
 
 
 @app.route("/api/manuels", methods=["POST"])
@@ -328,7 +328,8 @@ def api_fix(cid):
             restantes = {p["seriesId"] for p in engine.part_list(c) if p["key"] not in exclude}
             if len(restantes) < 2:
                 return jsonify({"ok": False, "error": "Il doit rester des parties d'au moins 2 séries. Pour écarter tout le crossover, utilise « Mettre de côté »."}), 400
-            fixes[cid] = {"order": order, "exclude": exclude}
+            nocopy = [k for k in body.get("nocopy", []) if k in cles and k not in exclude]
+            fixes[cid] = {"order": order, "exclude": exclude, "nocopy": nocopy}
         engine.save_state(st)
         engine.refresh()
     return jsonify({"ok": True})
