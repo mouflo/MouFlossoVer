@@ -17,7 +17,7 @@ import wiki as wikimod
 logger = logging.getLogger(__name__)
 UA = "MouFlossover/1.0 (outil personnel de médiathèque)"
 TEMPLATE = "Infobox television crossover episode"
-TTL = 7 * 86400
+TTL = 30 * 86400
 ETAT = {"running": False, "pages": 0}
 LOCK = threading.Lock()
 

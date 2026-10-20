@@ -1,6 +1,6 @@
 """Crossovers repérés grâce à TheTVDB : Sonarr reçoit de TheTVDB le titre et le résumé de chaque épisode.
 Quand le résumé d'un épisode parle de « crossover » (ou de « suite / conclusion ») ET nomme une autre série de la
-bibliothèque, on en tire un indice. L'analyse est faite en arrière-plan, gardée dans data/tvdb_hints.json (sept jours)
+bibliothèque, on en tire un indice. L'analyse est faite en arrière-plan, gardée dans data/tvdb_hints.json (une série n est relue que si elle a changé, ou après un mois)
 et ne demande que des échanges avec Sonarr, jamais avec le site de TheTVDB.
 """
 import json
@@ -14,7 +14,7 @@ import unicodedata
 import engine
 
 logger = logging.getLogger(__name__)
-TTL = 7 * 86400
+TTL = 30 * 86400          # sans changement dans la série, on ne la relit qu'une fois par mois
 VERSION = 2         # change quand les règles de lecture changent : tout est relu
 MOTS = re.compile(r"cross-?over|continues? (?:on|in|from|with)|concludes? (?:on|in|with)|conclusion (?:of|to)|"
                   r"part (?:one|two|three|1|2|3)\b|first part|second part|final part|two-part|three-part|picks? up (?:from|after)", re.I)
@@ -104,8 +104,11 @@ def scan(force=False):
         for s in series:
             sid = str(s["id"])
             ETAT["done"] += 1
-            if not force and now - d["scanned"].get(sid, 0) < TTL:
-                continue
+            st_ = s.get("statistics") or {}
+            signature = "%s|%s|%s" % (st_.get("episodeCount"), st_.get("episodeFileCount"), s.get("previousAiring") or st_.get("previousAiring"))
+            sig = d.setdefault("sig", {})
+            if not force and now - d["scanned"].get(sid, 0) < TTL and sig.get(sid, signature) == signature:
+                continue          # rien de nouveau dans cette série : on ne la relit pas
             try:
                 eps = engine.sonarr("GET", "/episode?seriesId=%d" % s["id"]) or []
             except Exception:
@@ -113,6 +116,7 @@ def scan(force=False):
             with LOCK:
                 d["hints"] = [h for h in d["hints"] if h["sid"] != s["id"]] + indices_de(s, eps, noms)
                 d["scanned"][sid] = now
+                sig[sid] = signature
             if ETAT["done"] % 50 == 0:
                 _sauver(d)
         _sauver(d)
