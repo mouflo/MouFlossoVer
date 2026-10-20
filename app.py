@@ -148,6 +148,9 @@ def api_undo(cid):
                 c = engine.find_crossover(cid)
                 res = engine.undo(cid, engine.load_state())
                 logger.info("Annulation du crossover %s : %s", cid, "faite" if res.get("ok") else res.get("error"))
+                if res.get("ok"):
+                    import invites
+                    invites.reactiver(cid)
                 engine.refresh()
             if res.get("ok") and c:
                 engine.JOB.update(label="Actualisation d'Emby…", pct=100)

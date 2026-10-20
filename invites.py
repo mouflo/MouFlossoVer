@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 TAG = "mouflossover-invite"
 RECHERCHE_TOUTES_LES = 6 * 3600          # nouvelle recherche si rien n'est arrivé
 VERIFIE_TOUTES_LES = 60
-ETATS_FINAUX = ("pret", "annule")
+ETATS_FINAUX = ("pret", "annule", "range")
 
 
 VIDEO = (".mkv", ".mp4", ".avi", ".m4v")
@@ -86,6 +86,46 @@ def deposer(maintenant=False):
     for sid in a_relire:        # une seule relecture par série, une fois tous les fichiers rangés (Sonarr ignore une relecture demandée pendant une autre)
         engine.sonarr("POST", "/command", {"name": "RescanSeries", "seriesId": sid})
     return pris
+
+
+def nettoyer_prets():
+    """Quand un crossover avec épisode invité est rangé (l'épisode est copié dans toutes les autres séries), le fichier du
+    dossier de passage ne sert plus : on le retire (via Sonarr, qui garde sa base à jour) pour ne pas garder de la place
+    pour rien. L'épisode est d'abord mis en « non surveillé » pour que Sonarr ne le retélécharge pas. Le torrent de
+    qBittorrent n'est pas touché : il continue de partager (le fichier du dossier de passage n'en était qu'un lien)."""
+    for g in _guests():
+        if g["status"] != "pret":
+            continue
+        c = next((i for i in engine.CACHE.get("items", []) if i["status"] == "done" and i["applied"]
+                  and set(g["with"]) <= {p["key"] for p in i["parts"]}
+                  and any(p["source"] == "invite" and p["season"] == g["season"] and p["ep"] == g["episode"] for p in i["parts"])), None)
+        if not c:
+            continue
+        try:
+            ep = _episode(g)
+            if ep and ep.get("hasFile") and ep.get("episodeFileId"):
+                if ep.get("monitored"):
+                    ep["monitored"] = False
+                    engine.sonarr("PUT", "/episode/%d" % ep["id"], ep)
+                engine.sonarr("DELETE", "/episodefile/%d" % ep["episodeFileId"])
+            serie = engine.sonarr("GET", "/series/%d" % g["sonarrId"]) or {}
+            for dp, dn, fn in sorted(os.walk(serie.get("path", "/nonexistent"), topdown=False), key=lambda t: -len(t[0])):
+                try:
+                    os.rmdir(dp)            # seulement si le dossier est vide
+                except OSError:
+                    pass
+            _maj(g["id"], status="range", message="Copié dans les autres séries : fichier retiré du dossier de passage")
+            logger.info("Épisode invité %s S%02dE%02d retiré du dossier de passage", g["title"], g["season"], g["episode"])
+        except Exception as ex:
+            logger.warning("Nettoyage de l'épisode invité %s : %s", g["id"], ex)
+
+
+def reactiver(cid):
+    """Crossover annulé : les épisodes invités déjà retirés sont redemandés (l'appli a besoin de leur fichier pour re-ranger)."""
+    for g in _guests():
+        if g["status"] == "range" and g["cid"] == cid:
+            _maj(g["id"], status="recherche", message="Crossover annulé : épisode redemandé", next_try=0)
+            threading.Thread(target=_un_pas, args=(g["id"],), daemon=True).start()
 
 
 def debloquer(eid):
@@ -309,6 +349,7 @@ def boucle():
                     _un_pas(g["id"])
             relancer_demandes()
             deposer()
+            nettoyer_prets()
         except Exception:
             logger.exception("Boucle des épisodes invités")
 

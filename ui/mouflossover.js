@@ -313,10 +313,10 @@
       return h('div', {class: 'mf-part', style: '--c:' + (COL[p.tag] || '#888')},
         h('div', {class: 'mf-pn'}, String(p.part)),
         h('div', {class: 'mf-tx'}, h('b', {}, 'Partie ' + p.part + ' — ' + p.series), h('small', {}, 'Saison ' + p.season + ', épisode ' + p.ep + ' · « ' + p.title + ' »'),
-          h('span', {class: 'mf-chip ' + (p.hasFile ? 'y' : 'n')}, p.hasFile ? 'Fichier présent' : 'Pas encore téléchargé'),
+          h('span', {class: 'mf-chip ' + (p.hasFile || p.nettoye ? 'y' : 'n')}, p.hasFile ? 'Fichier présent' : (p.nettoye ? 'Copié dans les autres séries' : 'Pas encore téléchargé')),
           p.source === 'wikipedia' ? h('span', {class: 'mf-chip w', title: 'Repéré grâce à Wikipédia'}, 'repéré via Wikipédia') : null,
           p.source === 'tvdb' ? h('span', {class: 'mf-chip w', title: 'Repéré grâce au résumé TheTVDB'}, 'repéré via TheTVDB') : null,
-          p.source === 'invite' ? h('span', {class: 'mf-chip w', title: 'Série ajoutée dans le dossier de passage'}, 'épisode invité') : null,
+          p.source === 'invite' ? h('span', {class: 'mf-chip w', title: 'Série ajoutée dans le dossier de passage'}, p.nettoye ? 'épisode invité · copié partout, fichier retiré' : 'épisode invité') : null,
           p.source === 'manuel' ? h('span', {class: 'mf-chip w', title: 'Crossover décrit à la main'}, 'ajouté à la main') : null,
           p.nocopy ? h('span', {class: 'mf-chip w', title: 'Cette partie reste dans sa série, elle n\'est pas copiée dans les autres'}, 'reste dans sa série') : null,
           p.dl ? h('span', {class: 'mf-chip w'}, '⏳ ' + p.dl) : null,
@@ -337,14 +337,14 @@
           h('small', {}, w.extrait ? '« ' + w.extrait + ' »' : 'Page de la série : aucun passage précis trouvé, cherche « crossover » dans la page.'));
       })) : null;
     var inv = (c.invites || []).length ? h('div', {class: 'mf-inv'}, (c.invites || []).map(function (g) {
-      var etapes = {ajout: '1/4 Ajout de la série', recherche: '2/4 Recherche', attente: '3/4 Téléchargement', pret: '4/4 Reçu'};
+      var etapes = {ajout: '1/4 Ajout de la série', recherche: '2/4 Recherche', attente: '3/4 Téléchargement', pret: '4/4 Reçu', range: '✔ Terminé'};
       return h('div', {class: 'mf-issue'}, h('b', {}, '📥 Épisode invité : ' + g.title + ' S' + pad(g.season) + 'E' + pad(g.episode)),
         h('p', {}, (etapes[g.status] || g.status) + ' — ' + (g.message || '')),
-        g.status !== 'pret' ? h('p', {class: 'mf-note'}, 'Tu as déjà le fichier ? Dépose-le tel quel dans le dossier de passage (son nom doit contenir S' + pad(g.season) + 'E' + pad(g.episode) + ') : il sera reconnu et rangé tout seul.') : null,
-        h('div', {class: 'mf-actions'}, g.status !== 'pret' && g.episodeId ? h('button', {type: 'button', class: 'mou-btn ghost small', onclick: function () { sources(g.title + ' S' + pad(g.season) + 'E' + pad(g.episode), g.episodeId); }}, '🔎 Choisir la version') : null,
-          g.status !== 'pret' ? h('button', {type: 'button', class: 'mou-btn ghost small', onclick: async function () { var r = await post('/api/invites/deposer'); toast(r.pris ? r.pris + ' fichier(s) déposé(s) reconnu(s) et rangé(s).' : 'Aucun fichier déposé à reconnaître pour l\'instant.', r.pris ? 'ok' : 'err'); load(false); }}, '📂 Chercher un fichier déposé') : null,
-          g.status !== 'pret' ? h('button', {type: 'button', class: 'mou-btn ghost small', onclick: async function () { await post('/api/invites/' + g.id + '/retry'); toast('Nouvel essai lancé', 'ok'); load(false); }}, 'Réessayer') : null,
-          g.status !== 'pret' ? h('button', {type: 'button', class: 'mou-btn ghost small', onclick: async function () { await post('/api/invites/' + g.id + '/cancel'); load(false); }}, 'Annuler la demande') : null));
+        (g.status !== 'pret' && g.status !== 'range') ? h('p', {class: 'mf-note'}, 'Tu as déjà le fichier ? Dépose-le tel quel dans le dossier de passage (son nom doit contenir S' + pad(g.season) + 'E' + pad(g.episode) + ') : il sera reconnu et rangé tout seul.') : null,
+        h('div', {class: 'mf-actions'}, (g.status !== 'pret' && g.status !== 'range') && g.episodeId ? h('button', {type: 'button', class: 'mou-btn ghost small', onclick: function () { sources(g.title + ' S' + pad(g.season) + 'E' + pad(g.episode), g.episodeId); }}, '🔎 Choisir la version') : null,
+          (g.status !== 'pret' && g.status !== 'range') ? h('button', {type: 'button', class: 'mou-btn ghost small', onclick: async function () { var r = await post('/api/invites/deposer'); toast(r.pris ? r.pris + ' fichier(s) déposé(s) reconnu(s) et rangé(s).' : 'Aucun fichier déposé à reconnaître pour l\'instant.', r.pris ? 'ok' : 'err'); load(false); }}, '📂 Chercher un fichier déposé') : null,
+          (g.status !== 'pret' && g.status !== 'range') ? h('button', {type: 'button', class: 'mou-btn ghost small', onclick: async function () { await post('/api/invites/' + g.id + '/retry'); toast('Nouvel essai lancé', 'ok'); load(false); }}, 'Réessayer') : null,
+          (g.status !== 'pret' && g.status !== 'range') ? h('button', {type: 'button', class: 'mou-btn ghost small', onclick: async function () { await post('/api/invites/' + g.id + '/cancel'); load(false); }}, 'Annuler la demande') : null));
     })) : null;
     var acts = h('div', {class: 'mf-actions'});
     if (c.manuel && !c.applied) acts.append(h('button', {type: 'button', class: 'mou-btn ghost small', onclick: async function () {

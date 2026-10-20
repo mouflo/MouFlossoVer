@@ -386,7 +386,8 @@ def build_crossovers():
             continue
         for grp in groups:
             if set(g["with"]) <= {"%d-%d-%d" % k for k in grp["parts"]}:
-                grp["parts"][(gs["id"], g["season"], g["episode"])] = {"s": gs, "e": ge, "part": g["part"], "src": "invite"}
+                grp["parts"][(gs["id"], g["season"], g["episode"])] = {"s": gs, "e": ge, "part": g["part"], "src": "invite",
+                                                                       "nettoye": g.get("status") == "range"}
                 break
     items = []
     fixes = etat.get("fixes", {})
@@ -526,12 +527,13 @@ def part_list(c):
                     "part": v["part"], "hasFile": bool(e.get("hasFile")), "episodeId": e["id"],
                     "monitored": bool(e.get("monitored")), "source": v["src"], "path": s["path"],
                     "overview": e.get("overview") or "", "airDate": e.get("airDate") or "",
-                    "dl": dl_etat(e["id"], bool(e.get("hasFile"))), "ref": bool(v.get("ref")), "nocopy": bool(v.get("nocopy"))})
+                    "dl": dl_etat(e["id"], bool(e.get("hasFile"))), "ref": bool(v.get("ref")), "nocopy": bool(v.get("nocopy")), "nettoye": bool(v.get("nettoye"))})
     return out
 
 
 def make_plan(c):
-    parts = part_list(c)
+    # Épisode invité déjà copié partout puis retiré du dossier de passage : il n'y a plus rien à faire pour lui
+    parts = [p for p in part_list(c) if not (p["nettoye"] and est_invite(p["path"]))]
     ops, blockers, warnings = [], [], []
     own_ops = []     # renommages des fichiers d'origine : toujours APRÈS les copies, qui lisent encore l'ancien nom
     owners = {}

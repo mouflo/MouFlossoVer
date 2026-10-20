@@ -148,5 +148,44 @@ class TestDepot(unittest.TestCase):
         self.assertIn(("POST", "/command", {"name": "RescanSeries", "seriesId": 9}), appels)
 
 
+class TestNettoyage(unittest.TestCase):
+    """Épisode invité déjà copié partout : son fichier est retiré du dossier de passage (via Sonarr), sans retélécharger."""
+
+    def test_nettoyage_puis_reactivation(self):
+        engine.save_state({"ignored": [], "done": {"cx": "m"}, "history": [], "guests": [
+            {"id": "g9", "cid": "cx", "with": ["1-1-1", "2-1-1"], "tvdbId": 5, "title": "Invitée", "season": 3, "episode": 4,
+             "part": 3, "status": "pret", "message": "", "sonarrId": 9, "episodeId": 90, "next_try": 0, "created": 0}]})
+        ancien_cache = dict(engine.CACHE)
+        engine.CACHE["items"] = [{"id": "cx", "status": "done", "applied": True,
+                                  "parts": [{"key": "1-1-1", "source": "sonarr", "season": 1, "ep": 1}, {"key": "2-1-1", "source": "sonarr", "season": 1, "ep": 1},
+                                            {"key": "9-3-4", "source": "invite", "season": 3, "ep": 4}]}]
+        appels = []
+        passage = Path(engine.staging_dir()) / "Invitee"
+        (passage / "Season 03").mkdir(parents=True, exist_ok=True)
+
+        def faux(methode, chemin, corps=None):
+            appels.append((methode, chemin))
+            if chemin == "/series/9":
+                return {"path": str(passage)}
+            ep = {"id": 90, "seasonNumber": 3, "episodeNumber": 4, "hasFile": True, "episodeFileId": 777, "monitored": True}
+            return [ep] if chemin.startswith("/episode?") else ep
+        ancien = engine.sonarr
+        engine.sonarr = faux
+        try:
+            invites.nettoyer_prets()
+            etat = next(g for g in engine.load_state()["guests"] if g["id"] == "g9")
+            self.assertEqual(etat["status"], "range")
+            self.assertIn(("PUT", "/episode/90"), appels)
+            self.assertIn(("DELETE", "/episodefile/777"), appels)
+            self.assertLess(appels.index(("PUT", "/episode/90")), appels.index(("DELETE", "/episodefile/777")))   # d'abord « non surveillé »
+            self.assertFalse(passage.exists())                                                                  # dossiers vides retirés
+            invites.reactiver("cx")
+            self.assertEqual(next(g for g in engine.load_state()["guests"] if g["id"] == "g9")["status"], "recherche")
+        finally:
+            engine.sonarr = ancien
+            engine.CACHE.clear()
+            engine.CACHE.update(ancien_cache)
+
+
 if __name__ == "__main__":
     unittest.main()
