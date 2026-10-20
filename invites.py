@@ -193,6 +193,28 @@ def importer(eid, src):
     return os.path.basename(dest)
 
 
+def deplacer_passage(ancien, nouveau):
+    """Le dossier de passage change d'endroit : les séries invitées sont déplacées par Sonarr (qui garde sa base à jour), et les
+    fichiers déposés en vrac suivent. Rien n'est supprimé ; l'ancien dossier n'est retiré de Sonarr que s'il est vide de séries."""
+    try:
+        os.makedirs(nouveau, exist_ok=True)
+        racines = engine.sonarr("GET", "/rootfolder") or []
+        if nouveau.rstrip("/") not in [r["path"].rstrip("/") for r in racines]:
+            engine.sonarr("POST", "/rootfolder", {"path": nouveau})
+        tag = next((t["id"] for t in engine.sonarr("GET", "/tag") or [] if t["label"] == TAG), None)
+        ids = [s["id"] for s in engine.sonarr("GET", "/series") or [] if tag in (s.get("tags") or [])
+               and s["path"].startswith(ancien.rstrip("/") + "/")]
+        if ids:
+            engine.sonarr("PUT", "/series/editor", {"seriesIds": ids, "rootFolderPath": nouveau, "moveFiles": True})
+        for f in os.listdir(ancien) if os.path.isdir(ancien) else []:
+            p = os.path.join(ancien, f)
+            if os.path.isfile(p) and f.lower().endswith(VIDEO) and not os.path.exists(os.path.join(nouveau, f)):
+                shutil.move(p, os.path.join(nouveau, f))
+        logger.info("Dossier de passage déplacé : %s -> %s (%d série(s) invitée(s))", ancien, nouveau, len(ids))
+    except Exception as ex:
+        logger.warning("Déplacement du dossier de passage : %s", ex)
+
+
 def nettoyer_prets():
     """Quand un crossover avec épisode invité est rangé (l'épisode est copié dans toutes les autres séries), le fichier du
     dossier de passage ne sert plus : on le retire (via Sonarr, qui garde sa base à jour) pour ne pas garder de la place

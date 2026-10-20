@@ -45,14 +45,39 @@
     </div>
 
     <div class="panel" data-onglet="Connexions">
-        <h2>🔔 Notifications Telegram</h2>
-        <div class="sub">Un message vous prévient dès qu'un crossover est détecté ou devient prêt à être rangé (par exemple quand l'épisode qui manquait est arrivé). Les messages arrivent dans le sujet « MouFlossover » de votre groupe Telegram.</div>
-        <div class="state" id="alState"></div>
-        <label class="check"><input type="checkbox" id="alOn"> Me prévenir par Telegram</label>
-        <div class="field"><label for="alUrl">Adresse de l'appli (le lien du message)</label>
-            <input type="text" id="alUrl" autocapitalize="off" spellcheck="false" placeholder="https://mouflossover.mon-domaine.fr"></div>
-        <div class="row"><button class="btn ghost" id="alTest" type="button">Envoyer un message de test</button><button class="btn" id="alSave" type="button">Enregistrer</button></div>
-        <div id="alMsg"></div>
+        <h2>🔎 Prowlarr</h2>
+        <div class="sub">Votre gestionnaire d'indexeurs. La clé se trouve dans Prowlarr → Réglages → Général → Clé API. Elle est rangée ici, jamais sur GitHub.</div>
+        <div class="field"><label for="pwUrl">Adresse de Prowlarr</label>
+            <input type="text" id="pwUrl" autocapitalize="off" spellcheck="false" placeholder="http://192.168.1.133:9696"></div>
+        <div class="field"><label for="pwKey">Clé API</label>
+            <input type="password" id="pwKey" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Laisse vide pour garder la clé actuelle"></div>
+        <div class="state" id="pwState"></div>
+        <div class="row"><button class="btn ghost" id="pwTest" type="button">Tester</button><button class="btn" id="pwSave" type="button">Enregistrer</button></div>
+        <div id="pwMsg"></div>
+    </div>
+
+    <div class="panel" data-onglet="Connexions">
+        <h2>🔔 Alertes Telegram</h2>
+        <div class="sub">Un message vous prévient dès qu'un crossover est détecté ou devient prêt à être rangé. Si une autre appli de ce serveur (MouFloster, MouFlanimeXer, MouFlopening, MouFlanga…) utilise déjà Telegram, MouFlossover reprend ses réglages tout seul : il n'y a rien à saisir. Sinon, crée un bot avec <b>@BotFather</b> (<code>/newbot</code>), colle son <b>jeton</b> ci-dessous, envoie « bonjour » au bot et clique sur « Détecter mon identifiant ».</div>
+        <div class="tabsinfo" id="tgSource"></div>
+        <details id="tgDiagBox" style="margin-top:8px"><summary style="cursor:pointer;color:var(--muted)">Où l'appli a cherché les réglages Telegram</summary><pre id="tgDiag" style="white-space:pre-wrap;font-size:.8rem;margin:8px 0 0"></pre></details>
+        <div class="field"><label for="tgToken">Jeton du bot</label>
+            <input type="password" id="tgToken" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="123456789:ABC…"><div class="tabsinfo" id="tgTokenState"></div></div>
+        <div class="field"><label for="tgChat">Ton identifiant Telegram, ou celui du groupe (commence par -100)</label>
+            <div class="row nowrap"><input type="text" id="tgChat" inputmode="numeric" autocomplete="off" placeholder="123456789"><button class="btn ghost" id="tgDetect">🔎 Détecter mon identifiant</button></div></div>
+        <div class="field"><label for="tgLien">Envoyer dans un sujet de groupe : lien d'un message du sujet</label>
+            <div class="row nowrap"><input type="text" id="tgLien" autocapitalize="off" spellcheck="false" placeholder="https://t.me/c/1234567890/45/678"><button class="btn ghost" id="tgLienLire">Utiliser ce lien</button></div>
+            <div class="tabsinfo">Dans ton groupe Telegram, ouvre le sujet de MouFlossover, fais un appui long sur un message → « Copier le lien », colle-le ici : le groupe et le numéro du sujet se remplissent. Le bot doit être membre du groupe.</div></div>
+        <div class="field"><label for="tgThread">Numéro du sujet (rempli par le lien ; vide = pas de sujet, messages en privé ou dans « Général »)</label>
+            <input type="text" id="tgThread" inputmode="numeric" autocomplete="off" placeholder="vide = pas de sujet">
+            <div class="row" style="margin-top:6px"><button class="btn ghost" id="tgDetectGroupe">🔎 Détecter le groupe et le sujet</button></div>
+            <div class="tabsinfo">Détection automatique : écris « bonjour » dans le sujet puis appuie sur le bouton (impossible si le bot sert déjà à une autre application comme Jeedom : utilise alors le lien).</div></div>
+        <div class="field"><label for="tgUrl">Adresse de MouFlossover pour le lien du message (ton adresse perso si tu en as une)</label>
+            <input type="text" id="tgUrl" autocapitalize="off" spellcheck="false" placeholder="https://mouflossover.mondomaine.fr"></div>
+        <div class="field"><label for="tgUrlLocal">Adresse de l'appli sur le réseau local (facultatif)</label><input type="text" id="tgUrlLocal" placeholder="http://192.168.1.141:8002" autocapitalize="off" spellcheck="false"></div>
+        <div class="field"><label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer"><input type="checkbox" id="tgActif" style="width:20px;height:20px;flex:none;margin-top:2px"><span>Me prévenir par Telegram (nouveau crossover détecté, crossover prêt à ranger)</span></label></div>
+        <div class="row" style="margin-top:12px"><button class="btn" id="tgSave">Enregistrer</button><button class="btn ghost" id="tgTest">📨 Envoyer un message de test</button></div>
+        <div id="tgMsg"></div>
     </div>
 
     <div class="panel" data-onglet="Dossiers">
@@ -61,6 +86,11 @@
         <div class="field"><label for="pathSeries">Dossier des séries</label>
             <div class="row nowrap"><input type="text" id="pathSeries" autocapitalize="off" spellcheck="false" placeholder="/mnt/mouflosyno/Emby-Media/Series"><button class="btn ghost" data-browse="pathSeries" type="button">📂 Parcourir</button></div></div>
         <div class="tabsinfo" id="pathsInfo"></div>
+        <h2 style="margin-top:22px">📥 Dossier de passage des crossovers</h2>
+        <div class="sub">Là où sont rangés, le temps qu'il faut, les épisodes de séries que vous n'avez pas dans votre collection. Il doit être <b>en dehors</b> du dossier des séries, pour qu'Emby ne le voie pas. Si vous le changez, Sonarr déplace les épisodes invités qu'il contient.</div>
+        <div class="field"><label for="pathPassage">Dossier de passage</label>
+            <div class="row nowrap"><input type="text" id="pathPassage" autocapitalize="off" spellcheck="false" placeholder="/mnt/mouflosyno/Emby-Media/Invites-MouFlossover"><button class="btn ghost" data-browse="pathPassage" type="button">📂 Parcourir</button></div></div>
+        <div class="tabsinfo" id="passageInfo"></div>
         <div class="row" style="margin-top:12px"><button class="btn" id="pathsSave" type="button">Enregistrer</button></div>
         <div id="pathsMsg"></div>
     </div>
@@ -97,22 +127,67 @@
         if (r.ok) { $('emKey').value = ''; const n = await api('/api/settings/emby'); $('emState').textContent = 'Clé actuelle : ' + (n.hint || 'définie'); }
     });
 
-    async function alertes() {
-        const a = await api('/api/settings/alertes');
-        $('alOn').checked = a.actif; $('alUrl').value = a.url || '';
-        $('alState').textContent = a.configure ? ('✅ Telegram prêt' + (a.source ? ' (réglages repris de ' + a.source + ')' : '') + (a.sujet ? ', sujet dédié.' : ', sans sujet dédié.')) : '❌ Aucun jeton Telegram trouvé sur le serveur.';
+    async function loadTelegram() {
+        const t = await api('/api/settings/telegram');
+        $('tgChat').value = t.chat_id || '';
+        $('tgThread').value = t.thread_id || '';
+        $('tgUrl').value = t.app_url || '';
+        $('tgUrlLocal').value = t.app_url_local || '';
+        $('tgActif').checked = !!t.actif;
+        $('tgTokenState').textContent = t.token_hint ? 'Jeton actuel : ' + t.token_hint : 'Aucun jeton défini';
+        $('tgDiag').textContent = (t.diagnostic || []).join('\n');
+        $('tgSource').textContent = t.source ? '✅ Réglages Telegram repris de « ' + t.source + ' » : tu peux simplement envoyer un message de test.' : '';
     }
-    await alertes();
-    $('alTest').addEventListener('click', async () => { say('alMsg', 'Envoi…', true); const r = await post('/api/settings/alertes', {test: true}); say('alMsg', r.message || r.error, r.ok); });
-    $('alSave').addEventListener('click', async () => { const r = await post('/api/settings/alertes', {actif: $('alOn').checked, url: $('alUrl').value}); say('alMsg', r.message || r.error, r.ok); if (r.ok) await alertes(); });
+    const tgCorps = action => ({action, token: $('tgToken').value, chat_id: $('tgChat').value, thread_id: $('tgThread').value, app_url: $('tgUrl').value, app_url_local: $('tgUrlLocal').value, actif: $('tgActif').checked});
+    $('tgDetect').addEventListener('click', async () => {
+        say('tgMsg', 'Recherche de ton message…', true);
+        const r = await post('/api/settings/telegram', tgCorps('detect'));
+        if (r.ok) $('tgChat').value = r.chat_id;
+        say('tgMsg', r.ok ? 'Identifiant trouvé : pense à cliquer sur « Enregistrer ».' : r.error, r.ok);
+    });
+    $('tgLienLire').addEventListener('click', async () => {
+        const r = await post('/api/settings/telegram', Object.assign(tgCorps('lien'), {lien: $('tgLien').value}));
+        if (r.ok) { $('tgChat').value = r.chat_id; $('tgThread').value = r.thread_id; }
+        say('tgMsg', r.ok ? 'Groupe et sujet lus dans le lien : appuie sur « 📨 Envoyer un message de test », puis « Enregistrer ».' : r.error, r.ok);
+    });
+    $('tgDetectGroupe').addEventListener('click', async () => {
+        say('tgMsg', 'Recherche de ton message dans le sujet…', true);
+        const r = await post('/api/settings/telegram', tgCorps('detect_groupe'));
+        if (r.ok) { $('tgChat').value = r.chat_id; $('tgThread').value = r.thread_id; }
+        say('tgMsg', r.ok ? 'Groupe et sujet trouvés : pense à cliquer sur « Enregistrer ».' : r.error, r.ok);
+    });
+    $('tgSave').addEventListener('click', async () => {
+        const r = await post('/api/settings/telegram', tgCorps('save'));
+        say('tgMsg', r.message || r.error, r.ok);
+        if (r.ok) { $('tgToken').value = ''; loadTelegram(); }
+    });
+    $('tgTest').addEventListener('click', async () => {
+        say('tgMsg', 'Envoi…', true);
+        const r = await post('/api/settings/telegram', tgCorps('test'));
+        say('tgMsg', r.message || r.error, r.ok);
+    });
+    await loadTelegram();
+
+    const pw = await api('/api/settings/prowlarr');
+    $('pwUrl').value = pw.url || '';
+    $('pwState').textContent = pw.configured ? 'Clé actuelle : ' + (pw.hint || 'définie') : 'Aucune clé définie';
+    const corpsP = test => ({url: $('pwUrl').value, api_key: $('pwKey').value, test});
+    $('pwTest').addEventListener('click', async () => { say('pwMsg', 'Test…', true); const r = await post('/api/settings/prowlarr', corpsP(true)); say('pwMsg', r.message || r.error, r.ok); });
+    $('pwSave').addEventListener('click', async () => {
+        say('pwMsg', 'Vérification…', true); const r = await post('/api/settings/prowlarr', corpsP(false));
+        say('pwMsg', r.message || r.error, r.ok);
+        if (r.ok) { $('pwKey').value = ''; const n = await api('/api/settings/prowlarr'); $('pwState').textContent = 'Clé actuelle : ' + (n.hint || 'définie'); }
+    });
 
     async function chemins() {
         const p = await api('/api/settings/paths');
         $('pathSeries').value = p.series || '';
+        $('pathPassage').value = p.passage || '';
+        $('passageInfo').textContent = p.passage_ok ? (p.passage_writable ? '✅ Dossier accessible, écriture possible.' : '⚠️ Dossier accessible mais en lecture seule.') : 'ℹ️ Ce dossier sera créé à l\'enregistrement.';
         $('pathsInfo').textContent = p.series_ok ? (p.writable ? '✅ Dossier accessible, écriture possible.' : '⚠️ Dossier accessible mais en lecture seule : MouFlossover ne pourra rien ranger.') : '❌ Dossier introuvable : le partage réseau est-il monté ?';
     }
     await chemins();
-    simpleSave('pathsSave', 'pathsMsg', '/api/settings/paths', () => ({series: $('pathSeries').value}), chemins);
+    simpleSave('pathsSave', 'pathsMsg', '/api/settings/paths', () => ({series: $('pathSeries').value, passage: $('pathPassage').value}), chemins);
 
     async function wiki() {
         const w = await api('/api/wiki');

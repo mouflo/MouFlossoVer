@@ -130,7 +130,11 @@ def envoyer(texte):
     return ok, msg
 
 
-def test():
-    c = {"name": "Message d'essai", "date": datetime.date.today().isoformat(), "parts": [{"series": "MouFlossover", "title": ""}], "invites": []}
-    return envoyer("🎬 <b>MouFlossover</b>\n\n🔔 <b>Les notifications fonctionnent</b>\nVous recevrez un message ici dès qu'un crossover est détecté ou devient prêt à être rangé."
-                   + ('\n<a href="%s">Ouvrir MouFlossover →</a>' % html.escape(lien(), quote=True) if lien() else ""))
+def test(token=None, chat_id=None, thread_id=None):
+    """Message d'essai ; les réglages passés (saisis dans la page, pas encore enregistrés) l'emportent sur les enregistrés."""
+    texte = ("🎬 <b>MouFlossover</b>\n\n🔔 <b>Les notifications fonctionnent</b>\nVous recevrez un message ici dès qu'un crossover est détecté ou devient prêt à être rangé."
+             + ('\n<a href="%s">Ouvrir MouFlossover →</a>' % html.escape(lien(), quote=True) if lien() else ""))
+    ok, msg = notifier.envoyer(texte, token, chat_id, thread_id, html=True)
+    if not ok:
+        logger.warning("Notification d'essai non envoyée : %s", msg)
+    return ok, msg
