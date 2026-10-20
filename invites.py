@@ -46,7 +46,7 @@ def deposer(maintenant=False):
     attente = [g for g in _guests() if g["status"] in ("recherche", "attente") and g.get("sonarrId")]
     if not attente or not os.path.isdir(dossier):
         return 0
-    pris = 0
+    pris, a_relire = 0, set()
     for f in sorted(os.listdir(dossier)):
         p = os.path.join(dossier, f)
         m = RX_SE.search(f)
@@ -72,7 +72,7 @@ def deposer(maintenant=False):
             cible = os.path.join(serie["path"], "Season %02d" % sa)
             os.makedirs(cible, exist_ok=True)
             shutil.move(p, os.path.join(cible, "%s.S%02dE%02d%s" % (os.path.basename(serie["path"].rstrip("/")), sa, ep, reste)))
-            engine.sonarr("POST", "/command", {"name": "RescanSeries", "seriesId": g["sonarrId"]})
+            a_relire.add(g["sonarrId"])
             if g.get("episodeId"):
                 q = engine.file_dl().get(g["episodeId"])
                 if q and q.get("id"):               # plus besoin de télécharger : on retire la demande en attente chez Sonarr
@@ -83,6 +83,8 @@ def deposer(maintenant=False):
             pris += 1
         except Exception as ex:
             logger.warning("Fichier déposé %s : %s", f, ex)
+    for sid in a_relire:        # une seule relecture par série, une fois tous les fichiers rangés (Sonarr ignore une relecture demandée pendant une autre)
+        engine.sonarr("POST", "/command", {"name": "RescanSeries", "seriesId": sid})
     return pris
 
 
@@ -244,7 +246,7 @@ def _un_pas(gid):
                 changement = True
         elif g["status"] == "attente":
             ep = _episode(g)
-            if ep and not ep.get("hasFile") and time.time() - g.get("last_scan", 0) > 120:
+            if ep and not ep.get("hasFile") and time.time() - g.get("last_scan", 0) > 90:
                 serie = engine.sonarr("GET", "/series/%d" % g["sonarrId"]) or {}
                 if any(f.lower().endswith(VIDEO) for _, _, fs in os.walk(serie.get("path", "/nonexistent")) for f in fs):
                     engine.sonarr("POST", "/command", {"name": "RescanSeries", "seriesId": g["sonarrId"]})
