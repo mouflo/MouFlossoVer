@@ -414,8 +414,11 @@
     try { if (localStorage.getItem('mf-help') === 'hidden') $('#mfHelp').style.display = 'none'; } catch (e) {}
     $('#mfHelpX').addEventListener('click', function () { $('#mfHelp').style.display = 'none'; try { localStorage.setItem('mf-help', 'hidden'); } catch (e) {} });
     load(false); loadWiki(); reprise();
-    setInterval(function () { load(false); }, 60000);
-    setInterval(loadWiki, 8000);
+    // Mises à jour discrètes : rien tant que la page est cachée (téléphone verrouillé, autre appli), et une relecture dès qu'on revient dessus
+    setInterval(function () { if (!document.hidden) load(false); }, 180000);
+    var tic = 0;
+    setInterval(function () { tic++; if (!document.hidden && (st.wikiRun || tic % 15 === 0)) loadWiki(); }, 8000);     // 8 s pendant l'analyse Wikipédia, sinon toutes les 2 min
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) { load(false); loadWiki(); } });
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 })();
