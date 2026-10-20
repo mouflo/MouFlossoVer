@@ -102,8 +102,20 @@ def ordonner(chemins_series):
                         if not os.path.basename(it.get("Path", "")).startswith(f[:-4]):
                             continue
                         full = _call("GET", "/Users/%s/Items/%s" % (uid, it["Id"]))
+                        # Garde-fou : enregistrer un épisode fait réécrire sa fiche NFO d'après ce qu'Emby a en mémoire. Si Emby a
+                        # lu le fichier avant que la fiche soit prête (titre = nom du fichier, résumé vide), on n'y touche pas.
+                        titre_nfo = mt.group(1).strip().replace("&amp;", "&")
+                        plot = re.search(r"<plot>(.*?)</plot>", t, re.S)
+                        if (full.get("Name") or "").strip() != titre_nfo or (plot and plot.group(1).strip() and not (full.get("Overview") or "").strip()):
+                            continue
                         if full.get("SortName") == veut and "SortName" in (full.get("LockedFields") or []):
                             continue
+                        # la place du spécial (juste avant tel épisode) : si Emby ne l'a pas en mémoire, il l'effacerait de la fiche
+                        for cs, ce in (("airsbefore_season", "airsbefore_episode"), ("displayseason", "displayepisode")):
+                            ms, me = re.search(r"<%s>(\d+)</%s>" % (cs, cs), t), re.search(r"<%s>(\d+)</%s>" % (ce, ce), t)
+                            if ms and me:
+                                full["AirsBeforeSeasonNumber"], full["AirsBeforeEpisodeNumber"] = int(ms.group(1)), int(me.group(1))
+                                break
                         full["ForcedSortName"] = full["SortName"] = veut
                         full["LockedFields"] = sorted(set((full.get("LockedFields") or []) + ["SortName"]))
                         req = urllib.request.Request(os.getenv("EMBY_URL").strip().rstrip("/") + "/Items/" + it["Id"], method="POST",

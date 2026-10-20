@@ -122,7 +122,6 @@ def api_apply(cid):
             if res.get("ok"):
                 engine.JOB.update(label="Actualisation d'Emby…", pct=100)
                 res["emby"] = emby.actualiser(_dossiers(c))
-                emby.ordonner_plus_tard(_dossiers(c))
                 logger.info("%s", res["emby"])
             engine.JOB.update(state="fini", ok=bool(res.get("ok")), pct=100 if res.get("ok") else engine.JOB.get("pct", 0),
                               message=("Crossover organisé (%d actions)." % res.get("actions", 0)) if res.get("ok") else res.get("error", "Échec"),
@@ -153,7 +152,6 @@ def api_undo(cid):
             if res.get("ok") and c:
                 engine.JOB.update(label="Actualisation d'Emby…", pct=100)
                 res["emby"] = emby.actualiser(_dossiers(c))
-                emby.ordonner_plus_tard(_dossiers(c))
             engine.JOB.update(state="fini", ok=bool(res.get("ok")), pct=100, message="Traitement annulé." if res.get("ok") else res.get("error", "Échec"),
                               emby=res.get("emby", ""))
         except Exception as ex:
