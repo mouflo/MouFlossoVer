@@ -187,5 +187,38 @@ class TestNettoyage(unittest.TestCase):
             engine.CACHE.update(ancien_cache)
 
 
+class TestDepotBibliotheque(unittest.TestCase):
+    """Épisode manquant d'une série de la bibliothèque, déposé à la main dans le dossier de passage."""
+
+    def test_depot_serie_bibliotheque(self):
+        passage = Path(engine.staging_dir())
+        passage.mkdir(parents=True, exist_ok=True)
+        serie = test_engine.TMP / "series" / "NCIS - Los Angeles"
+        (serie / "s3").mkdir(parents=True, exist_ok=True)
+        (serie / "s3" / "NCIS.Los.Angeles.S03E20.1080p.mkv").write_bytes(b"deja")
+        (passage / "NCIS_Los_Angeles_S03E21.mkv").write_bytes(b"x" * 10)
+        (passage / "Autre.Serie.S03E21.mkv").write_bytes(b"y")             # même saison/épisode, autre série : on n'y touche pas
+        engine.save_state({"ignored": [], "done": {}, "history": [], "guests": []})
+        ancien_cache = dict(engine.CACHE)
+        engine.CACHE["items"] = [{"id": "c", "parts": [{"seriesId": 7, "series": "NCIS: Los Angeles", "season": 3, "ep": 21, "episodeId": 70,
+                                                         "hasFile": False, "source": "sonarr"}]}]
+        appels = []
+
+        def faux(methode, chemin, corps=None):
+            appels.append((methode, chemin))
+            return {"path": str(serie)} if chemin == "/series/7" else {}
+        ancien = engine.sonarr
+        engine.sonarr = faux
+        try:
+            self.assertEqual(invites.deposer(maintenant=True), 1)
+        finally:
+            engine.sonarr = ancien
+            engine.CACHE.clear()
+            engine.CACHE.update(ancien_cache)
+        self.assertTrue((serie / "s3" / "NCIS.Los.Angeles.S03E21.mkv").exists())
+        self.assertTrue((passage / "Autre.Serie.S03E21.mkv").exists())
+        self.assertIn(("POST", "/command"), appels)
+
+
 if __name__ == "__main__":
     unittest.main()

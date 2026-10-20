@@ -38,53 +38,86 @@ def _mots(texte):
     return {m for m in re.findall(r"[a-z0-9]+", t) if len(m) > 2}
 
 
+def _cibles():
+    """Épisodes qu'on attend et qu'un fichier déposé peut compléter : demandes d'épisodes invités, et épisodes manquants
+    (pas de fichier) d'un crossover, dans une série de la bibliothèque."""
+    out = []
+    for g in _guests():
+        if g["status"] in ("recherche", "attente") and g.get("sonarrId"):
+            out.append({"type": "invite", "gid": g["id"], "sid": g["sonarrId"], "titre": g["title"], "season": g["season"],
+                        "ep": g["episode"], "eid": g.get("episodeId")})
+    vus = set()
+    for c in engine.CACHE.get("items", []):
+        for p in c["parts"]:
+            if not p["hasFile"] and p["source"] != "invite" and (p["seriesId"], p["season"], p["ep"]) not in vus:
+                vus.add((p["seriesId"], p["season"], p["ep"]))
+                out.append({"type": "biblio", "sid": p["seriesId"], "titre": p["series"], "season": p["season"], "ep": p["ep"], "eid": p["episodeId"]})
+    return out
+
+
 def deposer(maintenant=False):
-    """Fichiers déposés à la main à la racine du dossier de passage (ex. « Serie.S16E20c.1080p…mkv ») : si le numéro de saison
-    et d'épisode correspond à une demande en attente, le fichier est rangé dans le dossier de la série invitée, puis Sonarr le relit.
-    Renvoie le nombre de fichiers pris en charge."""
+    """Fichiers déposés à la main à la racine du dossier de passage (ex. « Serie.S16E20c.1080p…mkv ») : si la saison et l'épisode
+    correspondent à un épisode attendu, le fichier est rangé au bon endroit (dossier de la série invitée, ou saison de la série
+    de la bibliothèque), puis Sonarr relit la série. Pour une série de la bibliothèque, le nom du fichier doit aussi ressembler
+    au titre de la série. Renvoie le nombre de fichiers pris en charge."""
     dossier = engine.staging_dir()
-    attente = [g for g in _guests() if g["status"] in ("recherche", "attente") and g.get("sonarrId")]
-    if not attente or not os.path.isdir(dossier):
+    cibles = _cibles()
+    if not cibles or not os.path.isdir(dossier):
         return 0
-    pris, a_relire = 0, set()
+    pris, a_relire = 0, {}
     for f in sorted(os.listdir(dossier)):
         p = os.path.join(dossier, f)
         m = RX_SE.search(f)
         if not (os.path.isfile(p) and f.lower().endswith(VIDEO) and m):
             continue
         sa, ep = int(m.group(1)), int(m.group(2))
-        cands = [g for g in attente if g["season"] == sa and g["episode"] == ep]
+        fm = _mots(f)
+        cands = [c for c in cibles if c["season"] == sa and c["ep"] == ep]
+        score = lambda c: len(_mots(c["titre"]) & fm)
+        cands = [c for c in cands if c["type"] == "invite" or score(c) >= 1]
         if len(cands) > 1:
-            fm = _mots(f)
-            cands = sorted(cands, key=lambda g: -len(_mots(g["title"]) & fm))
-            if len(_mots(cands[0]["title"]) & fm) == len(_mots(cands[1]["title"]) & fm):
+            cands.sort(key=lambda c: -score(c))
+            if score(cands[0]) == score(cands[1]):
                 continue
         if not cands:
             continue
-        g = cands[0]
+        c = cands[0]
         taille = os.path.getsize(p)
         if not maintenant and (time.time() - os.path.getmtime(p) < 90 or _VUS.get(p) != taille):
             _VUS[p] = taille                       # copie peut-être encore en cours : on revérifie au prochain passage
             continue
         try:
-            serie = engine.sonarr("GET", "/series/%d" % g["sonarrId"])
+            serie = engine.sonarr("GET", "/series/%d" % c["sid"])
             reste = re.sub(r"^[a-zA-Z](?=[.\s_-])", "", f[m.end():])
-            cible = os.path.join(serie["path"], "Season %02d" % sa)
+            if c["type"] == "invite":
+                cible = os.path.join(serie["path"], "Season %02d" % sa)
+                prefixe = os.path.basename(serie["path"].rstrip("/"))
+            else:                                   # série de la bibliothèque : on suit ses habitudes de rangement
+                cible = engine.season_dir(serie["path"], sa) or os.path.join(serie["path"], "s%d" % sa)
+                prefixe = engine.file_prefix(serie["path"])
             os.makedirs(cible, exist_ok=True)
-            shutil.move(p, os.path.join(cible, "%s.S%02dE%02d%s" % (os.path.basename(serie["path"].rstrip("/")), sa, ep, reste)))
-            a_relire.add(g["sonarrId"])
-            if g.get("episodeId"):
-                q = engine.file_dl().get(g["episodeId"])
+            nom = "%s.S%02dE%02d%s" % (prefixe, sa, ep, reste)
+            if os.path.exists(os.path.join(cible, nom)):
+                logger.warning("Fichier déposé %s : %s existe déjà, on n'y touche pas", f, nom)
+                continue
+            shutil.move(p, os.path.join(cible, nom))
+            a_relire[c["sid"]] = c
+            if c.get("eid"):
+                q = engine.file_dl().get(c["eid"])
                 if q and q.get("id"):               # plus besoin de télécharger : on retire la demande en attente chez Sonarr
                     engine.sonarr("DELETE", "/queue/%d?removeFromClient=false&blocklist=false" % q["id"])
-            _maj(g["id"], message="Fichier déposé reconnu et rangé : Sonarr le relit", next_try=0)
-            threading.Thread(target=_un_pas, args=(g["id"],), daemon=True).start()
+            if c["type"] == "invite":
+                _maj(c["gid"], message="Fichier déposé reconnu et rangé : Sonarr le relit", next_try=0)
+                threading.Thread(target=_un_pas, args=(c["gid"],), daemon=True).start()
+            logger.info("Fichier déposé %s rangé dans %s", f, cible)
             _VUS.pop(p, None)
             pris += 1
         except Exception as ex:
             logger.warning("Fichier déposé %s : %s", f, ex)
     for sid in a_relire:        # une seule relecture par série, une fois tous les fichiers rangés (Sonarr ignore une relecture demandée pendant une autre)
         engine.sonarr("POST", "/command", {"name": "RescanSeries", "seriesId": sid})
+    if a_relire:
+        threading.Thread(target=lambda: (time.sleep(25), engine.refresh()), daemon=True).start()
     return pris
 
 
