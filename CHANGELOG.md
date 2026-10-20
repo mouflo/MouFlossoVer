@@ -2,6 +2,9 @@
 
 La version affichée dans l'appli est `v1.0.N (hash)` : N est le nombre de commits depuis la version de base.
 
+## [1.0] — 2026-10-20
+- 🎨 **Interface commune, version 2** (identique dans les cinq applis) : les fenêtres et les bulles de message suivent les couleurs du skin choisi, les fenêtres plus hautes que l'écran défilent avec leurs boutons collés en bas, la touche « retour » du téléphone ferme la fenêtre ouverte au lieu de quitter l'appli, et le **logo de l'en-tête et l'icône de l'onglet changent de couleur avec le skin**.
+
 ## [1.0] — 2026-10-19
 Première version installée comme les autres applis MouFl (service systemd, dépôt GitHub, mise à jour de nuit).
 
