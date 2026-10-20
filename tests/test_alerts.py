@@ -1,6 +1,11 @@
+import os
+import sys
 import unittest
+from pathlib import Path
 
-import alerts
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import test_engine  # noqa: F401  (règle DATA_DIR / SERIES_DIR sur un dossier temporaire AVANT d importer le moteur)
+import alerts  # noqa: E402
 
 
 def carte(cles, statut, nom="Mon crossover", blockers=()):

@@ -12,6 +12,8 @@ import wiki as wikimod
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA = os.environ.get("DATA_DIR", str(BASE_DIR / "data"))
+if "unittest" in (sys.argv[0] if sys.argv else "") and not os.environ.get("DATA_DIR"):
+    raise RuntimeError("Tests lancés sans DATA_DIR : refus de toucher aux vraies données (importe test_engine en premier).")
 REFRESH = int(os.environ.get("REFRESH_INTERVAL", "900"))
 
 SLOT_START = 100
@@ -591,10 +593,10 @@ def make_plan(c):
                 sm = re.search(r"S00E(\d+)", existing)
                 if sm and int(sm.group(1)) >= SLOT_START:
                     ni = nfo_info(os.path.join(sdir, est + ".nfo"))
-                    need = not ni or not position_ok(ni["text"], airs)
+                    need = not ni or not position_ok(ni["text"], airs) or ("<sorttitle>%02d " % p["part"]) not in ni["text"]
                     if need and ni:
                         ops.append({"kind": "patch_nfo", "path": os.path.join(sdir, est + ".nfo"), "season": 0,
-                                    "episode": int(sm.group(1)), "airs": list(airs),
+                                    "episode": int(sm.group(1)), "airs": list(airs), "part": p["part"],
                                     "label": "Position de %s (part %d) dans %s" % (p["series"], p["part"], t["series"])})
                     continue
                 n = next(i for i in range(slot_pref(c, sid), 999) if i not in used)
@@ -604,7 +606,7 @@ def make_plan(c):
                             "files": group_files(sdir, est),
                             "label": "Migrer %s (part %d) de %s vers S00E%02d" % (p["series"], p["part"], t["series"], n)})
                 ops.append({"kind": "patch_nfo", "path": os.path.join(sdir, new_est + ".nfo"), "season": 0, "episode": n,
-                            "airs": list(airs), "label": "Corriger le NFO de %s (part %d)" % (p["series"], p["part"])})
+                            "airs": list(airs), "part": p["part"], "label": "Corriger le NFO de %s (part %d)" % (p["series"], p["part"])})
                 continue
             n = next(i for i in range(slot_pref(c, sid), 999) if i not in used)
             used.add(n)
@@ -622,7 +624,7 @@ def make_plan(c):
                             "plot": p["overview"], "aired": p["airDate"], "season": 0, "episode": n,
                             "label": "Créer la fiche de %s (part %d) dans %s" % (p["series"], p["part"], t["series"])})
             ops.append({"kind": "patch_nfo", "path": os.path.join(sdir, new_stem + ".nfo"), "season": 0, "episode": n,
-                        "airs": list(airs), "label": "Corriger le NFO de la copie %s dans %s" % (p["series"], t["series"])})
+                        "airs": list(airs), "part": p["part"], "label": "Corriger le NFO de la copie %s dans %s" % (p["series"], t["series"])})
     return {"ops": ops + own_ops, "blockers": blockers, "warnings": warnings}
 
 
@@ -769,6 +771,13 @@ def _execute(c, plan, st):
                 t = re.sub(r"<episode>\d+</episode>", "<episode>%d</episode>" % op["episode"], t)
                 t = re.sub(r"\s*<airsbefore_(season|episode)>\d+</airsbefore_\1>", "", t)
                 t = re.sub(r"\s*<airsafter_season>\d+</airsafter_season>", "", t)
+                if op.get("part"):
+                    # Deux spéciaux au même endroit : Emby les range alors par ordre alphabétique du titre. Un titre de tri
+                    # « 01 … », « 02 … » impose l'ordre des parties.
+                    mt = re.search(r"<title>(.*?)</title>", t, re.S)
+                    t = re.sub(r"\s*<sorttitle>.*?</sorttitle>", "", t, flags=re.S)
+                    if mt:
+                        t = t.replace(mt.group(0), mt.group(0) + "\n  <sorttitle>%02d %s</sorttitle>" % (op["part"], mt.group(1).strip()), 1)
                 ins = "  <airsbefore_season>%d</airsbefore_season>\n  <airsbefore_episode>%d</airsbefore_episode>\n" % tuple(op["airs"])
                 if "</episodedetails>" not in t:
                     raise RuntimeError("NFO sans </episodedetails> : " + op["path"])
