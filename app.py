@@ -96,7 +96,7 @@ def api_plan(cid):
 
 def _dossiers(c):
     """Dossiers des séries touchées par ce crossover, sans doublon."""
-    return list(dict.fromkeys(p["path"] for p in engine.part_list(c)))
+    return list(dict.fromkeys(p["path"] for p in engine.part_list(c) if not engine.est_invite(p["path"])))     # une série invitée n est pas dans Emby
 
 
 @app.route("/api/crossovers/<cid>/apply", methods=["POST"])
