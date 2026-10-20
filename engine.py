@@ -104,7 +104,7 @@ def load_state():
 
 def save_state(st):
     os.makedirs(DATA, exist_ok=True)
-    tmp = os.path.join(DATA, "state.json.tmp")
+    tmp = os.path.join(DATA, "state.json.%s.tmp" % uuid.uuid4().hex[:8])      # un fichier temporaire par écriture : plusieurs fils peuvent écrire en même temps
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(st, f, ensure_ascii=False, indent=1)
     os.replace(tmp, os.path.join(DATA, "state.json"))

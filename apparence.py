@@ -131,12 +131,16 @@ def css_couleurs(c):
 # ---------------------------------------------------------------- comptes, choix, skins
 
 def _compte():
-    """(clé de fichier, est_connecté) de la personne connectée ; l'admin a la clé « _admin »."""
+    """(clé de fichier, est_connecté) de la personne connectée ; l'admin a la clé « _admin ».
+    Les comptes « lecteur » (MouFlanga, MouFlossover) et « copain » (MouFloster, MouFlopening) ont chacun leur choix ;
+    une appli à compte unique (MouFlanimeXer) n'a que l'admin."""
     import auth
+    if not hasattr(auth, "role"):
+        return "_admin" if auth.is_logged_in() else None
     r = auth.role()
     if r == "admin":
         return "_admin"
-    if r == "lecteur":
+    if r in ("lecteur", "copain"):
         return re.sub(r"[^A-Za-z0-9._@+-]", "_", auth.utilisateur() or "inconnu")
     return None
 

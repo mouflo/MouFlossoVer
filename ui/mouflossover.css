@@ -110,27 +110,13 @@ body.mou-skin button.mf-pill.on { background:var(--accent); border-color:var(--a
 .mf-pick.on{outline:2px solid var(--accent)}
 .mf-inv{margin:8px 0}
 
-/* Popups et bulles de confirmation : suivent les couleurs du skin en cours */
-.mou-modal { background:color-mix(in srgb, var(--bg) 70%, transparent); -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px); }
-.mou-box { background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:16px; box-shadow:0 18px 50px rgba(0,0,0,.45); }
-.mou-box h3 { color:var(--text); }
-.mou-box .mou-msub, .mou-box .mf-note, .mou-box small { color:var(--muted); }
-.mou-box .mf-cap { color:var(--muted); }
-.mou-btn.ghost, body.mou-skin button.ghost { background:var(--field); border:1px solid var(--line); }
-.mou-btn.ghost:hover, body.mou-skin button.ghost:hover { background:color-mix(in srgb, var(--accent) 18%, var(--field)); }
-.mou-toast { background:var(--card); color:var(--text); border:1px solid var(--accent); box-shadow:0 10px 30px rgba(0,0,0,.45), 0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent); border-radius:14px; }
-.mou-toast.err { background:color-mix(in srgb, var(--err, #e5534b) 16%, var(--card)); border-color:var(--err, #e5534b); }
-.mou-toast.warn { background:color-mix(in srgb, var(--warn, #e5a84b) 16%, var(--card)); border-color:var(--warn, #e5a84b); }
+.mou-box .mf-cap, .mou-box .mf-note { color:var(--muted); }
 .mf-bar { background:var(--field); border-color:var(--line); }
 .mf-fixrow, .mf-pick { background:var(--field); border:1px solid var(--line); color:var(--text); }
 .mf-pick.on { border-color:var(--accent); background:color-mix(in srgb, var(--accent) 16%, var(--field)); outline:none; }
 
 body.mou-skin button.mf-pick.on, .mou-btn.ghost.mf-pick.on { border-color:var(--accent); background:color-mix(in srgb, var(--accent) 22%, var(--field)); box-shadow:0 0 0 1px var(--accent); }
 
-/* Fenêtres plus hautes que l'écran : elles défilent et les boutons restent atteignables */
-.mou-modal .mou-box, .mou-modal .mou-box.narrow { max-height:92vh !important; max-height:92dvh !important; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; }
-.mou-modal .mou-box.narrow { height:auto !important; }
-.mou-modal .mou-box > .mou-actions-row { position:sticky; bottom:-18px; z-index:5; background:var(--card); padding:12px 0 6px; margin-top:12px; border-top:1px solid var(--line); }
 .mf-fix { max-height:none; }
 .mf-dl { margin-top:8px; display:block; }
 .mf-manrow { background:var(--field); border:1px solid var(--line); border-radius:12px; padding:10px; margin-bottom:10px; display:grid; gap:8px; }
