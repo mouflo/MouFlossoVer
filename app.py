@@ -99,8 +99,17 @@ def _dossiers(c):
     return list(dict.fromkeys(p["path"] for p in engine.part_list(c) if not engine.est_invite(p["path"])))     # une série invitée n est pas dans Emby
 
 
+import threading as _threading
+_DEMARRAGE = _threading.Lock()       # un seul rangement ou annulation à la fois, même si on appuie deux fois très vite
+
+
 @app.route("/api/crossovers/<cid>/apply", methods=["POST"])
 def api_apply(cid):
+    with _DEMARRAGE:
+        return _api_apply(cid)
+
+
+def _api_apply(cid):
     if engine.JOB.get("state") == "running":
         return jsonify({"ok": False, "error": "Un traitement est déjà en cours : attends qu'il se termine."}), 409
     with engine.LOCK:
@@ -137,6 +146,11 @@ def api_apply(cid):
 
 @app.route("/api/crossovers/<cid>/undo", methods=["POST"])
 def api_undo(cid):
+    with _DEMARRAGE:
+        return _api_undo(cid)
+
+
+def _api_undo(cid):
     if engine.JOB.get("state") == "running":
         return jsonify({"ok": False, "error": "Un traitement est déjà en cours : attends qu'il se termine."}), 409
     engine.JOB.update(state="running", kind="undo", name="", total=1, done=0, sub_i=0, sub_n=1, ff=0, pct=0,
@@ -146,11 +160,13 @@ def api_undo(cid):
         try:
             with engine.LOCK:
                 c = engine.find_crossover(cid)
-                res = engine.undo(cid, engine.load_state())
+                st0 = engine.load_state()
+                cles = [p["key"] for p in engine.part_list(c)] if c else st0.get("cles", {}).get(cid, [])
+                res = engine.undo(cid, st0)
                 logger.info("Annulation du crossover %s : %s", cid, "faite" if res.get("ok") else res.get("error"))
                 if res.get("ok"):
                     import invites
-                    invites.reactiver(cid)
+                    invites.reactiver(cles)
                 engine.refresh()
             if res.get("ok") and c:
                 engine.JOB.update(label="Actualisation d'Emby…", pct=100)
@@ -186,7 +202,8 @@ def api_lookup():
 @app.route("/api/crossovers/<cid>/suggestions")
 def api_suggestions(cid):
     import invites
-    c = engine.find_crossover(cid)
+    with engine.LOCK:
+        c = engine.find_crossover(cid)
     if not c:
         return jsonify({"items": []}), 404
     try:
@@ -205,7 +222,8 @@ def api_invite(cid):
         return jsonify({"ok": False, "error": "Choisis une série dans la liste et indique la saison et l'épisode."}), 400
     if saison < 1 or episode < 1:
         return jsonify({"ok": False, "error": "La saison et l'épisode doivent être des numéros à partir de 1."}), 400
-    c = engine.find_crossover(cid)
+    with engine.LOCK:
+        c = engine.find_crossover(cid)
     if not c:
         return jsonify({"ok": False, "error": "Crossover introuvable : actualise la liste."}), 404
     res = invites.creer(c, tvdb, str(body.get("title", ""))[:120], saison, episode)
@@ -238,7 +256,7 @@ def api_fs_fichiers():
         chemin = Path(raw).resolve()
     except (OSError, RuntimeError):
         return jsonify({"error": "Chemin invalide"}), 400
-    if not str(chemin).startswith("/mnt") or not chemin.is_dir():
+    if not (str(chemin) == "/mnt" or str(chemin).startswith("/mnt/")) or not chemin.is_dir():
         chemin = Path("/mnt")
     dossiers, fichiers = [], []
     try:
@@ -380,7 +398,8 @@ def api_manuel_supprimer(mid):
 @app.route("/api/crossovers/<cid>/fiches", methods=["POST"])
 def api_fiches(cid):
     """Crée les fiches manquantes des épisodes d'origine (jamais d'écrasement), puis demande à Emby de les relire."""
-    c = engine.find_crossover(cid)
+    with engine.LOCK:
+        c = engine.find_crossover(cid)
     if not c:
         return jsonify({"ok": False, "error": "Crossover introuvable : actualise la liste."}), 404
     try:
@@ -391,6 +410,28 @@ def api_fiches(cid):
         emby.actualiser(_dossiers(c))
     engine.refresh()
     return jsonify({"ok": True, "faits": faits})
+
+
+@app.route("/api/parts/<cle>/saison", methods=["POST"])
+def api_saison(cle):
+    """Saison que la personne n'a plus : « garder » = ajouter quand même le crossover dans cette série ;
+    « passer » = seulement dans les autres séries (l'épisode sert de source, puis il est retiré) ; vide = reposer la question."""
+    import re as _re
+    choix = (request.get_json(silent=True) or {}).get("choix")
+    if not _re.match(r"^\d+-\d+-\d+$", cle) or choix not in ("garder", "passer", None, ""):
+        return jsonify({"ok": False, "error": "Demande invalide."}), 400
+    with engine.LOCK:
+        st = engine.load_state()
+        rangé = next((i for i in engine.CACHE.get("items", []) if i.get("applied") and any(p["key"] == cle for p in i["parts"])), None)
+        if rangé:
+            return jsonify({"ok": False, "error": "Ce crossover est déjà rangé : fais d'abord « Annuler le traitement » pour changer d'avis."}), 409
+        if choix:
+            st.setdefault("saisons", {})[cle] = choix
+        else:
+            st.setdefault("saisons", {}).pop(cle, None)
+        engine.save_state(st)
+        engine.refresh()
+    return jsonify({"ok": True})
 
 
 @app.route("/api/crossovers/<cid>/fix", methods=["POST"])

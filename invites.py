@@ -4,8 +4,10 @@ MouFlossover ajoute discrètement la série dans Sonarr (dossier de passage hors
 celui demandé), lance la recherche de cet épisode, attend son arrivée, puis le crossover le range comme les autres
 parties. Tout tourne dans l'appli, sans intervention : l'état est gardé dans data/state.json et reprend au redémarrage.
 
-Rien n'est jamais supprimé : le fichier reste dans le dossier de passage (lien dur vers le fichier de qBittorrent, qui
-continue donc de partager) et la série invitée reste dans Sonarr, sans épisode surveillé.
+Une fois le crossover rangé (l'épisode est copié dans toutes les autres séries), le fichier du dossier de passage est
+retiré via Sonarr pour ne pas garder de place pour rien. Ce n'était qu'un lien vers le fichier de qBittorrent, qui continue
+donc de partager. La série invitée reste dans Sonarr, sans épisode surveillé. Même chose pour un épisode d'une saison que
+la personne ne garde plus et qu'elle a choisi de ne pas ajouter à cette série (« seulement dans les autres séries »).
 """
 import logging
 import os
@@ -245,14 +247,70 @@ def nettoyer_prets():
             logger.info("Épisode invité %s S%02dE%02d retiré du dossier de passage", g["title"], g["season"], g["episode"])
         except Exception as ex:
             logger.warning("Nettoyage de l'épisode invité %s : %s", g["id"], ex)
+    # Épisodes d'une saison que la personne n'a plus, utilisés seulement comme source : retirés une fois copiés partout
+    for c in engine.CACHE.get("items", []):
+        if c["status"] != "done" or not c["applied"]:
+            continue
+        for p in c["parts"]:
+            if p.get("choix_saison") != "passer" or p.get("retire") or not p.get("hasFile"):
+                continue
+            try:
+                ep = engine.sonarr("GET", "/episode/%d" % p["episodeId"])
+                if ep and ep.get("hasFile") and ep.get("episodeFileId"):
+                    if ep.get("monitored"):
+                        ep["monitored"] = False
+                        engine.sonarr("PUT", "/episode/%d" % ep["id"], ep)
+                    fichier = engine.sonarr("GET", "/episodefile/%d" % ep["episodeFileId"]) or {}
+                    engine.sonarr("DELETE", "/episodefile/%d" % ep["episodeFileId"])
+                    dossier = os.path.dirname(fichier.get("path") or "")
+                    if dossier:
+                        for f in os.listdir(dossier) if os.path.isdir(dossier) else []:
+                            # fichiers liés à cet épisode (vignette, fiche) laissés par Sonarr ou Emby
+                            if fichier.get("path") and f.startswith(os.path.splitext(os.path.basename(fichier["path"]))[0]):
+                                try:
+                                    os.remove(os.path.join(dossier, f))
+                                except OSError:
+                                    pass
+                        try:
+                            os.rmdir(dossier)        # seulement si le dossier de la saison est vide
+                        except OSError:
+                            pass
+                with engine.LOCK:
+                    st = engine.load_state()
+                    st.setdefault("retires", {})[p["key"]] = int(time.time())
+                    st.setdefault("retires_eid", {})[p["key"]] = p["episodeId"]
+                    engine.save_state(st)
+                logger.info("%s S%02dE%02d : copié dans les autres séries, retiré de la saison que tu ne gardes pas", p["series"], p["season"], p["ep"])
+                threading.Thread(target=engine.refresh, daemon=True).start()
+            except Exception as ex:
+                logger.warning("Retrait de %s : %s", p["key"], ex)
 
 
-def reactiver(cid):
-    """Crossover annulé : les épisodes invités déjà retirés sont redemandés (l'appli a besoin de leur fichier pour re-ranger)."""
+def reactiver(cles):
+    """Crossover annulé : les épisodes déjà retirés (invités, ou d'une saison que la personne n'a plus) sont redemandés,
+    l'appli a besoin de leur fichier pour re-ranger. On les reconnaît aux épisodes du crossover (cles), pas à son identifiant."""
+    cles = set(cles or [])
     for g in _guests():
-        if g["status"] == "range" and g["cid"] == cid:
+        if g["status"] == "range" and g.get("with") and set(g["with"]) <= cles:
             _maj(g["id"], status="recherche", message="Crossover annulé : épisode redemandé", next_try=0)
             threading.Thread(target=_un_pas, args=(g["id"],), daemon=True).start()
+    with engine.LOCK:
+        st = engine.load_state()
+        a_redemander = [k for k in list(st.get("retires", {})) if k in cles]
+        for k in a_redemander:
+            st["retires"].pop(k, None)
+        engine.save_state(st)
+    for k in a_redemander:
+        eid = st.get("retires_eid", {}).get(k)
+        try:
+            if eid:
+                ep = engine.sonarr("GET", "/episode/%d" % eid)
+                ep["monitored"] = True
+                engine.sonarr("PUT", "/episode/%d" % eid, ep)
+                engine.sonarr("POST", "/command", {"name": "EpisodeSearch", "episodeIds": [eid]})
+                engine.noter_demande(eid)
+        except Exception as ex:
+            logger.warning("Nouvelle demande de l'épisode %s : %s", k, ex)
 
 
 def debloquer(eid):

@@ -59,6 +59,7 @@
 
   function explainBlocker(b) {
     var m;
+    if ((m = b.match(/^Saison absente : (.*?) n'a plus la saison (\d+) dans ta bibliothèque \(S(\d+)E(\d+)\)/))) return {icon: '📼', t: m[1] + ' : saison ' + m[2] + ' que tu ne gardes plus', d: "Tu n'as plus cette saison de " + m[1] + ". Veux-tu quand même y ajouter ce crossover ? Si tu choisis « seulement dans les autres séries », l'épisode sert juste à compléter les autres séries puis il est retiré : aucun dossier de saison n'est gardé pour lui.", files: [], saison: {serie: m[1], s: parseInt(m[3], 10), e: parseInt(m[4], 10)}};
     if (/^Partie .* manquante/.test(b)) return {icon: '🧩', t: 'Il manque la partie ' + (b.match(/^Partie (.*?) manquante/) || [0, ''])[1] + ' du crossover', d: "Cette partie du crossover vient d'une série que tu n'as pas dans Sonarr (ou d'un épisode que Sonarr ne connaît pas). Ajoute la série dans Sonarr, puis « Actualiser ». Si tu préfères ranger quand même les parties que tu as, utilise « Corriger » puis « Enregistrer » : les parties seront renumérotées sans trou.", files: []};
     if (/pas encore téléchargé/.test(b)) return {icon: '⏳', t: 'Épisode pas encore téléchargé', d: b.split(' : ')[0] + " n'est pas encore dans la bibliothèque. Sonarr doit d'abord le récupérer, puis clique sur « Actualiser ».", files: []};
     if (/introuvable sur le disque/.test(b)) return {icon: '❓', t: 'Fichier introuvable', d: b.split(' : ')[0] + " : Sonarr le croit présent mais je ne le trouve pas dans le dossier de la saison.", files: []};
@@ -198,7 +199,7 @@
       var li = await chercher(x.title);
       if (li[0]) { chosen = li[0]; etat.textContent = 'Série choisie : ' + li[0].title + (li[0].year ? ' (' + li[0].year + ')' : ''); montrer(li); }
     }
-    var body = h('div', {}, h('p', {class: 'mou-msub'}, "L'appli ajoute la série dans Sonarr dans un dossier de passage (invisible pour Emby, aucun autre épisode ne sera téléchargé), demande cet épisode, attend son arrivée puis le range avec le crossover. Le fichier n'est jamais supprimé : qBittorrent continue de le partager."),
+    var body = h('div', {}, h('p', {class: 'mou-msub'}, "L'appli ajoute la série dans Sonarr dans un dossier de passage (invisible pour Emby, aucun autre épisode ne sera téléchargé), demande cet épisode, attend son arrivée puis le range avec le crossover. Une fois l'épisode copié dans les autres séries, son fichier est retiré du dossier de passage pour ne pas prendre de place ; qBittorrent continue de le partager."),
       sug.children.length ? h('div', {}, h('div', {class: 'mf-cap'}, 'Suggestions'), sug) : null,
       h('div', {class: 'mf-cap'}, 'Série'), q, res, h('div', {class: 'mf-cap'}, 'Saison et épisode'), h('div', {style: 'display:grid;grid-template-columns:1fr 1fr;gap:8px'}, sa, ep), etat);
     if ((sg.items || []).length) appliquer(sg.items[0]);       // rempli d'office avec la 1re suggestion, modifiable
@@ -317,6 +318,13 @@
     }
   }
 
+  // Saison que la personne ne garde plus : ajouter quand même le crossover dans cette série, ou seulement dans les autres
+  async function choisirSaison(p, choix) {
+    var r = await post('/api/parts/' + p.key + '/saison', {choix: choix});
+    toast(r.ok ? (choix === 'garder' ? 'Le crossover sera aussi ajouté dans ' + p.series + '.' : (choix === 'passer' ? 'Le crossover sera rangé seulement dans les autres séries.' : 'La question sera reposée.')) : (r.error || 'Échec'), r.ok ? 'ok' : 'err');
+    load(false);
+  }
+
   // Correction à la main : changer l'ordre des parties ou en retirer une
   async function corriger(c) {
     var lignes = c.parts.map(function (p) { return {key: p.key, p: p, out: false, nc: !!p.nocopy}; });
@@ -337,7 +345,7 @@
     }
     dessiner();
     var body = h('div', {}, h('p', {class: 'mou-msub'}, "Change l'ordre des parties avec ▲ ▼ ou retire une partie qui n'a rien à faire dans ce crossover. Rien n'est touché sur tes fichiers avant de cliquer sur « Organiser »."), liste,
-      c.fixed ? h('button', {type: 'button', class: 'mou-btn ghost small', onclick: async function () { await post('/api/crossovers/' + c.id + '/fix', {reset: true}); document.getElementById('mfDlg').remove(); toast('Détection automatique rétablie', 'ok'); load(false); }}, 'Rétablir la détection automatique') : null);
+      c.fixed ? h('button', {type: 'button', class: 'mou-btn ghost small', onclick: async function () { await post('/api/crossovers/' + c.id + '/fix', {reset: true}); var x = document.querySelector('#mfDlg .mou-actions-row .ghost'); if (x) x.click(); toast('Détection automatique rétablie', 'ok'); load(false); }}, 'Rétablir la détection automatique') : null);
     if (!await dlg('Corriger ce crossover', body, 'Enregistrer')) return;
     var r = await post('/api/crossovers/' + c.id + '/fix', {order: lignes.filter(function (l) { return !l.out; }).map(function (l) { return l.key; }), exclude: lignes.filter(function (l) { return l.out; }).map(function (l) { return l.key; }),
       nocopy: lignes.filter(function (l) { return !l.out && l.nc; }).map(function (l) { return l.key; })});
@@ -350,24 +358,36 @@
       return h('div', {class: 'mf-part', style: '--c:' + (COL[p.tag] || '#888')},
         h('div', {class: 'mf-pn'}, String(p.part)),
         h('div', {class: 'mf-tx'}, h('b', {}, 'Partie ' + p.part + ' — ' + p.series), h('small', {}, 'Saison ' + p.season + ', épisode ' + p.ep + ' · « ' + p.title + ' »'),
-          h('span', {class: 'mf-chip ' + (p.hasFile || p.nettoye ? 'y' : 'n')}, p.hasFile ? 'Fichier présent' : (p.nettoye ? 'Copié dans les autres séries' : 'Pas encore téléchargé')),
+          h('span', {class: 'mf-chip ' + (p.hasFile || p.nettoye || p.retire ? 'y' : 'n')}, p.hasFile ? 'Fichier présent' : (p.nettoye || p.retire ? 'Copié dans les autres séries' : 'Pas encore téléchargé')),
+          p.choix_saison === 'garder' ? h('span', {class: 'mf-chip w'}, 'saison que tu ne gardes plus : ajouté quand même') : null,
+          p.choix_saison === 'passer' ? h('span', {class: 'mf-chip w'}, p.retire ? 'seulement dans les autres séries · retiré après copie' : 'seulement dans les autres séries · sera retiré après copie') : null,
+          (p.choix_saison && !c.applied) ? h('button', {type: 'button', class: 'mou-btn ghost small mf-dl', onclick: function () { choisirSaison(p, null); }}, "↺ Changer d'avis") : null,
           p.source === 'wikipedia' ? h('span', {class: 'mf-chip w', title: 'Repéré grâce à Wikipédia'}, 'repéré via Wikipédia') : null,
           p.source === 'tvdb' ? h('span', {class: 'mf-chip w', title: 'Repéré grâce au résumé TheTVDB'}, 'repéré via TheTVDB') : null,
           p.source === 'invite' ? h('span', {class: 'mf-chip w', title: 'Série ajoutée dans le dossier de passage'}, p.nettoye ? 'épisode invité · copié partout, fichier retiré' : 'épisode invité') : null,
           p.source === 'manuel' ? h('span', {class: 'mf-chip w', title: 'Crossover décrit à la main'}, 'ajouté à la main') : null,
           p.nocopy ? h('span', {class: 'mf-chip w', title: 'Cette partie reste dans sa série, elle n\'est pas copiée dans les autres'}, 'reste dans sa série') : null,
           p.dl ? h('span', {class: 'mf-chip w'}, '⏳ ' + p.dl) : null,
-          (!p.hasFile && !p.dl && p.source !== 'invite' && !/Invites/i.test(p.path || '')) ? h('button', {type: 'button', class: 'mou-btn ghost small mf-dl', onclick: async function (ev) {
+          (!p.hasFile && !p.dl && !p.retire && p.source !== 'invite') ? h('button', {type: 'button', class: 'mou-btn ghost small mf-dl', onclick: async function (ev) {
             var b = ev.currentTarget; b.disabled = true;
             var r = await post('/api/episodes/' + p.episodeId + '/telecharger');
             toast(r.ok ? 'Recherche lancée chez vos indexeurs : « Actualiser » quand il sera téléchargé.' : (r.error || 'Échec'), r.ok ? 'ok' : 'err');
             if (!r.ok) b.disabled = false; else b.textContent = '⏳ Recherche lancée';
           }}, '⬇️ Télécharger cet épisode') : null,
-          (!p.hasFile && p.source !== 'invite' && !/Invites/i.test(p.path || '')) ? h('button', {type: 'button', class: 'mou-btn ghost small mf-dl', onclick: function () { sources(p.series + ' S' + pad(p.season) + 'E' + pad(p.ep), p.episodeId); }}, '🔎 Choisir la version') : null,
-          (!p.hasFile && p.source !== 'invite' && !/Invites/i.test(p.path || '')) ? h('button', {type: 'button', class: 'mou-btn ghost small mf-dl', onclick: function () { importer(p.series + ' S' + pad(p.season) + 'E' + pad(p.ep), p.episodeId); }}, '📂 Importer un fichier') : null));
+          (!p.hasFile && !p.retire && p.source !== 'invite') ? h('button', {type: 'button', class: 'mou-btn ghost small mf-dl', onclick: function () { sources(p.series + ' S' + pad(p.season) + 'E' + pad(p.ep), p.episodeId); }}, '🔎 Choisir la version') : null,
+          (!p.hasFile && !p.retire && p.source !== 'invite') ? h('button', {type: 'button', class: 'mou-btn ghost small mf-dl', onclick: function () { importer(p.series + ' S' + pad(p.season) + 'E' + pad(p.ep), p.episodeId); }}, '📂 Importer un fichier') : null));
     });
     var issues = [];
-    c.blockers.forEach(function (b) { var e = explainBlocker(b); issues.push(h('div', {class: 'mf-issue bad'}, h('b', {}, e.icon + ' ' + e.t), e.d ? h('p', {}, e.d) : null, e.files.length ? h('ul', {}, e.files.map(function (f) { return h('li', {}, f); })) : null)); });
+    c.blockers.forEach(function (b) {
+      var e = explainBlocker(b), choix = null;
+      if (e.saison) {
+        var pt = c.parts.filter(function (p) { return p.series === e.saison.serie && p.season === e.saison.s && p.ep === e.saison.e; })[0];
+        if (pt) choix = h('div', {class: 'mf-actions'},
+          h('button', {type: 'button', class: 'mou-btn small', onclick: function () { choisirSaison(pt, 'garder'); }}, "Oui, l'ajouter dans " + pt.series),
+          h('button', {type: 'button', class: 'mou-btn ghost small', onclick: function () { choisirSaison(pt, 'passer'); }}, 'Non, seulement dans les autres séries'));
+      }
+      issues.push(h('div', {class: 'mf-issue bad'}, h('b', {}, e.icon + ' ' + e.t), e.d ? h('p', {}, e.d) : null, e.files.length ? h('ul', {}, e.files.map(function (f) { return h('li', {}, f); })) : null, choix));
+    });
     c.warnings.forEach(function (w) {
       var e = explainWarning(w);
       var cree = /pas de NFO/.test(w) ? h('button', {type: 'button', class: 'mou-btn ghost small', onclick: async function (ev) {
@@ -403,7 +423,8 @@
     }}, '🗑️ Supprimer'));
     if (c.status === 'todo') acts.append(h('button', {type: 'button', class: 'mou-btn', onclick: async function () {
       var body = h('div', {}, h('p', {class: 'mou-msub'}, '« ' + c.name + ' » : ' + c.opCount + ' action(s) vont être exécutées sur tes fichiers (renommages, copies, informations Emby, réglage Sonarr).'),
-        h('p', {class: 'mou-msub'}, "Aucun fichier n'est supprimé. Un journal est conservé : « Annuler le traitement » remettra tout comme avant."));
+        h('p', {class: 'mou-msub'}, "Aucun fichier de tes séries n'est supprimé. Un journal est conservé : « Annuler le traitement » remettra tout comme avant."),
+        c.parts.some(function (p) { return p.source === 'invite' || p.choix_saison === 'passer'; }) ? h('p', {class: 'mou-msub'}, "Une fois copié dans les autres séries, l'épisode invité ou de la saison que tu ne gardes plus est retiré, pour ne pas prendre de place (qBittorrent continue de partager ce qu'il a téléchargé).") : null);
       if (!await dlg('Organiser ce crossover ?', body, 'Organiser')) return;
       var r = await post('/api/crossovers/' + c.id + '/apply');
       if (r.ok) suivre('Organisation de « ' + c.name + ' »'); else { toast(r.error || 'Échec', 'err'); load(false); }

@@ -46,7 +46,9 @@ def _manque(c):
     """Ce qui bloque, en une phrase simple."""
     out = []
     for b in c.get("blockers", []):
-        if b.startswith("Partie") and "manquante" in b:
+        if b.startswith("Saison absente"):
+            out.append(b.split(" : ")[1].split(" (")[0] + " : à toi de choisir si on l'y ajoute quand même")
+        elif b.startswith("Partie") and "manquante" in b:
             out.append("une partie vient d'une série absente de la bibliothèque")
         elif "pas encore téléchargé" in b:
             out.append(b.split(" : ")[0] + " n'est pas encore téléchargé")

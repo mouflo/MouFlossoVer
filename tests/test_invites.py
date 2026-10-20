@@ -179,7 +179,7 @@ class TestNettoyage(unittest.TestCase):
             self.assertIn(("DELETE", "/episodefile/777"), appels)
             self.assertLess(appels.index(("PUT", "/episode/90")), appels.index(("DELETE", "/episodefile/777")))   # d'abord « non surveillé »
             self.assertFalse(passage.exists())                                                                  # dossiers vides retirés
-            invites.reactiver("cx")
+            invites.reactiver(["1-1-1", "2-1-1", "9-3-4"])
             self.assertEqual(next(g for g in engine.load_state()["guests"] if g["id"] == "g9")["status"], "recherche")
         finally:
             engine.sonarr = ancien

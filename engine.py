@@ -97,9 +97,13 @@ def sonarr(method, path, body=None):
 def load_state():
     try:
         with open(os.path.join(DATA, "state.json"), encoding="utf-8") as f:
-            return json.load(f)
+            st = json.load(f)
     except Exception:
-        return {"ignored": [], "done": {}, "history": []}
+        st = {}
+    for cle, defaut in (("ignored", list), ("done", dict), ("history", list)):     # un état incomplet ne doit jamais faire planter
+        if not isinstance(st.get(cle), defaut):
+            st[cle] = defaut()
+    return st
 
 
 def save_state(st):
@@ -200,6 +204,17 @@ def slot_pref(c, sid):
         if sid in ids:
             n += sum(1 for v in o["parts"].values() if v["s"]["id"] != sid and not v.get("ref") and not v.get("nocopy"))
     return n
+
+
+def saison_abandonnee(s, saison):
+    """Saison que la personne ne garde plus (elle ne conserve que les saisons pas encore vues) : la saison ne contient aucun
+    fichier en dehors des épisodes de crossover, alors qu'une saison plus récente de la même série en a."""
+    stats = {se.get("seasonNumber"): (se.get("statistics") or {}).get("episodeFileCount", 0) or 0 for se in s.get("seasons") or []}
+    if saison <= 0 or not any(n > saison and f > 0 for n, f in stats.items() if n is not None):
+        return False
+    xo = {(k[1], k[2]) for o in ALLITEMS for k, v in o["parts"].items()
+          if k[0] == s["id"] and k[1] == saison and v["e"].get("hasFile")}
+    return stats.get(saison, 0) - len(xo) <= 0
 
 
 def position_ok(texte, airs):
@@ -403,7 +418,11 @@ def build_crossovers():
             or next((fn for fn, m in families if titles <= {x["title"] for x in m}), "Autres séries")
         first = min((v for v in g["parts"].values() if not v.get("ref")), key=lambda v: v["part"])
         name = g["name"] or PART_RX.sub("", first["e"].get("title") or "").strip() or "Crossover"
-        cid = hashlib.sha1("|".join(sorted("%d-%d-%d" % k for k in g["parts"])).encode()).hexdigest()[:10]
+        # Identifiant : seulement les épisodes de la bibliothèque. Un épisode invité ajouté plus tard ne doit pas le changer,
+        # sinon le crossover perdrait son rangement, sa correction ou sa mise de côté (cid_ancien sert à migrer l'existant).
+        cles = sorted("%d-%d-%d" % k for k, v in g["parts"].items() if v.get("src") != "invite")
+        cid = hashlib.sha1("|".join(cles).encode()).hexdigest()[:10]
+        cid_ancien = hashlib.sha1("|".join(sorted("%d-%d-%d" % k for k in g["parts"])).encode()).hexdigest()[:10]
         parts = g["parts"]
         fx = fixes.get(cid)
         if fx:
@@ -416,7 +435,7 @@ def build_crossovers():
             for i, (k, v) in enumerate(sorted([kv for kv in parts.items() if not kv[1].get("ref")], key=lambda kv: (rang.get("%d-%d-%d" % kv[0], 999), kv[1]["part"]))):
                 v["part"] = i + 1
         items.append({"id": cid, "franchise": fr, "date": g["date"], "parts": parts, "name": name, "wiki": g.get("wiki", []),
-                      "fixed": bool(fx), "manuel": g.get("manuel")})
+                      "fixed": bool(fx), "manuel": g.get("manuel"), "cles": cles, "cid_ancien": cid_ancien})
     items.sort(key=lambda c: c["date"], reverse=True)
     ALLITEMS[:] = items
     return items, series
@@ -522,16 +541,21 @@ def noter_demande(eid):
         save_state(st)
 
 
-def part_list(c):
+def part_list(c, st=None):
+    st = st if st is not None else load_state()
+    choix, retires = st.get("saisons", {}), st.get("retires", {})
     out = []
     for k, v in sorted(c["parts"].items(), key=lambda kv: (kv[1]["part"], kv[1]["s"]["title"])):
         s, e = v["s"], v["e"]
+        cle = "%d-%d-%d" % k
+        absente = not v.get("ref") and v.get("src") != "invite" and not est_invite(s["path"]) and saison_abandonnee(s, e["seasonNumber"])
         out.append({"key": "%d-%d-%d" % k, "series": s["title"], "seriesId": s["id"], "tag": tag_of(s["title"]),
                     "season": e["seasonNumber"], "ep": e["episodeNumber"], "title": e.get("title") or "",
                     "part": v["part"], "hasFile": bool(e.get("hasFile")), "episodeId": e["id"],
                     "monitored": bool(e.get("monitored")), "source": v["src"], "path": s["path"],
                     "overview": e.get("overview") or "", "airDate": e.get("airDate") or "",
-                    "dl": dl_etat(e["id"], bool(e.get("hasFile"))), "ref": bool(v.get("ref")), "nocopy": bool(v.get("nocopy")), "nettoye": bool(v.get("nettoye"))})
+                    "dl": dl_etat(e["id"], bool(e.get("hasFile"))), "ref": bool(v.get("ref")), "nocopy": bool(v.get("nocopy")), "nettoye": bool(v.get("nettoye")),
+                    "saison_absente": absente, "choix_saison": choix.get(cle), "retire": cle in retires})
     return out
 
 
@@ -573,17 +597,25 @@ def creer_fiches_manquantes(c, emby_mod=None):
 
 
 def make_plan(c):
-    # Épisode invité déjà copié partout puis retiré du dossier de passage : il n'y a plus rien à faire pour lui
-    parts = [p for p in part_list(c) if not (p["nettoye"] and est_invite(p["path"]))]
+    st = load_state()
+    deja = c["id"] in st.get("done", {})
+    # Épisode invité, ou épisode d'une saison que la personne n'a plus, déjà copié partout puis retiré : plus rien à faire pour lui
+    parts = [p for p in part_list(c, st) if not (p["nettoye"] and est_invite(p["path"]))
+             and not (p["retire"] and p["choix_saison"] == "passer")]
+    passe = {p["key"] for p in parts if p["choix_saison"] == "passer"}
     ops, blockers, warnings = [], [], []
     own_ops = []     # renommages des fichiers d'origine : toujours APRÈS les copies, qui lisent encore l'ancien nom
     owners = {}
     sd = series_dir()
     numeros = sorted(p["part"] for p in parts if not p["ref"])
     trous = [n for n in range(1, numeros[-1] + 1) if n not in numeros] if numeros else []
-    if trous and c["id"] not in load_state().get("done", {}):
+    if trous and not deja:
         blockers.append("Partie %s manquante : cette partie est dans une série absente de ta bibliothèque (ou un épisode inconnu de Sonarr)"
                         % ", ".join(str(n) for n in trous))
+    for p in parts:
+        if p["saison_absente"] and not p["choix_saison"] and not deja:
+            blockers.append("Saison absente : %s n'a plus la saison %d dans ta bibliothèque (S%02dE%02d) : choisis si ce crossover doit quand même y être ajouté"
+                            % (p["series"], p["season"], p["season"], p["ep"]))
     for p in parts:
         sr = {"title": p["series"], "path": p["path"]}
         if sd and not (p["path"].rstrip("/") + "/").startswith(sd.rstrip("/") + "/") and not est_invite(p["path"]):
@@ -615,12 +647,15 @@ def make_plan(c):
     for p in parts:
         if est_invite(p["path"]):        # série invitée : elle ne reçoit rien et son fichier n'est pas renommé
             continue
+        propres = [q for q in parts if q["seriesId"] == p["seriesId"] and not q["ref"]]
+        if propres and all(q["key"] in passe for q in propres):
+            continue                      # saison que la personne n'a plus : la série ne reçoit rien, son épisode sert seulement de source
         if p["seriesId"] not in series_ids:
             series_ids.append(p["seriesId"])
     allocated = {}
     for p in parts:
         o = owners[(p["seriesId"], p["season"], p["ep"])]
-        if o["state"] == "plain" and not est_invite(p["path"]) and not p["ref"]:
+        if o["state"] == "plain" and not est_invite(p["path"]) and not p["ref"] and p["key"] not in passe:
             stem = stem_of(o["file"])
             pre = re.match(r"^(.*?S\d{2}\.?E\d{2})", stem).group(1)
             new_stem = "%s.part%d(%s)%s" % (pre, p["part"], p["tag"], release_suffix(stem))
@@ -659,7 +694,12 @@ def make_plan(c):
                 if m.group(2) and m.group(2).upper() != p["tag"]:
                     continue
                 ni = nfo_info(os.path.join(sdir, stem_of(f) + ".nfo"))
-                if ow_title and ni and ni["title"].strip() != ow_title.strip():
+                meme_taille = False
+                try:
+                    meme_taille = os.path.getsize(os.path.join(sdir, f)) == os.path.getsize(os.path.join(ow["dir"], ow["file"]))
+                except OSError:
+                    pass
+                if ow_title and ni and ni["title"].strip() != ow_title.strip() and not (m.group(2) and meme_taille):
                     continue
                 if not m.group(2) and not (ow_title and ni):
                     continue
@@ -678,11 +718,16 @@ def make_plan(c):
                 sm = re.search(r"S00E(\d+)", existing)
                 if sm and int(sm.group(1)) >= SLOT_START:
                     ni = nfo_info(os.path.join(sdir, est + ".nfo"))
-                    need = not ni or not position_ok(ni["text"], airs) or ("<sorttitle>%02d " % p["part"]) not in ni["text"]
+                    titre_abime = bool(ow_title and ni and ni["title"].strip() != ow_title.strip())
+                    need = not ni or not position_ok(ni["text"], airs) or ("<sorttitle>%02d " % p["part"]) not in ni["text"] or titre_abime
                     if need and ni:
-                        ops.append({"kind": "patch_nfo", "path": os.path.join(sdir, est + ".nfo"), "season": 0,
-                                    "episode": int(sm.group(1)), "airs": list(airs), "part": p["part"],
-                                    "label": "Position de %s (part %d) dans %s" % (p["series"], p["part"], t["series"])})
+                        op = {"kind": "patch_nfo", "path": os.path.join(sdir, est + ".nfo"), "season": 0,
+                              "episode": int(sm.group(1)), "airs": list(airs), "part": p["part"],
+                              "label": "Position de %s (part %d) dans %s" % (p["series"], p["part"], t["series"])}
+                        if titre_abime:
+                            op["title"] = ow_title
+                            op["label"] = "Remettre le titre « %s » de %s (part %d) dans %s" % (ow_title, p["series"], p["part"], t["series"])
+                        ops.append(op)
                     continue
                 n = next(i for i in range(slot_pref(c, sid), 999) if i not in used)
                 used.add(n)
@@ -713,15 +758,62 @@ def make_plan(c):
     return {"ops": ops + own_ops, "blockers": blockers, "warnings": warnings}
 
 
+def recoller(items, st):
+    """Un crossover dont la liste d'épisodes change (nouvelle partie détectée, épisode invité ajouté) change d'identifiant.
+    On reporte alors son rangement, sa correction et sa mise de côté sur le nouvel identifiant, en le reconnaissant à ses
+    épisodes. Renvoie True si l'état a changé (il faut alors recalculer)."""
+    cles_par_id = st.setdefault("cles", {})
+    actuels = {c["id"] for c in items}
+    change = False
+
+    def deplacer(ancien, nouveau):
+        nonlocal change
+        if ancien == nouveau:
+            return
+        for nom in ("done", "fixes"):
+            d = st.setdefault(nom, {})
+            if ancien in d and nouveau not in d:
+                d[nouveau] = d.pop(ancien)
+                change = True
+        if ancien in st.get("ignored", []) and nouveau not in st["ignored"]:
+            st["ignored"] = [nouveau if i == ancien else i for i in st["ignored"]]
+            change = True
+        for g in st.get("guests", []):
+            if g.get("cid") == ancien:
+                g["cid"] = nouveau
+        if ancien in cles_par_id:
+            cles_par_id[nouveau] = sorted(set(cles_par_id.pop(ancien)) | set(cles_par_id.get(nouveau, [])))
+
+    for c in items:
+        if c.get("cid_ancien") and c["cid_ancien"] not in actuels:
+            deplacer(c["cid_ancien"], c["id"])
+    connus = set(st.get("done", {})) | set(st.get("fixes", {})) | set(st.get("ignored", []))
+    for orphelin in [i for i in connus if i not in actuels and i in cles_par_id]:
+        anciennes = set(cles_par_id[orphelin])
+        cands = [c for c in items if set(c["cles"]) & anciennes and not ({c["id"]} & connus)]
+        if len(cands) == 1:
+            deplacer(orphelin, cands[0]["id"])
+    for c in items:                        # mémoire des épisodes de chaque crossover suivi, pour pouvoir le retrouver plus tard
+        if c["id"] in connus or c["id"] in st.get("done", {}) or c["id"] in st.get("ignored", []) or c["id"] in st.get("fixes", {}):
+            if cles_par_id.get(c["id"]) != c["cles"]:
+                cles_par_id[c["id"]] = c["cles"]
+                change = True
+    return change
+
+
 def refresh():
     import invites
     with LOCK:
         try:
             items, series = build_crossovers()
             st = load_state()
+            if recoller(items, st):
+                save_state(st)
+                items, series = build_crossovers()
+                st = load_state()
             out = []
             for c in items:
-                parts = part_list(c)
+                parts = part_list(c, st)
                 plan = make_plan(c)
                 if c["id"] in st["ignored"]:
                     status = "ignored"
@@ -781,20 +873,54 @@ def job_pct():
 
 
 def copie_suivie(src, dst):
-    """Copie un fichier par morceaux en mettant à jour l'avancement (les vidéos sont lourdes)."""
+    """Copie un fichier par morceaux en mettant à jour l'avancement (les vidéos sont lourdes). La copie se fait dans un fichier
+    temporaire, renommé seulement une fois complet : jamais de fichier à moitié copié sous le nom final."""
     taille = os.path.getsize(src)
     fait = 0
-    with open(src, "rb") as a, open(dst, "wb") as b:
-        while True:
-            buf = a.read(8 * 1024 * 1024)
-            if not buf:
-                break
-            b.write(buf)
-            fait += len(buf)
-            JOB["ff"] = fait / taille if taille else 1
-            JOB["pct"] = job_pct()
-    shutil.copystat(src, dst)
+    tmp = dst + ".mfpart"
+    try:
+        with open(src, "rb") as a, open(tmp, "wb") as b:
+            while True:
+                buf = a.read(8 * 1024 * 1024)
+                if not buf:
+                    break
+                b.write(buf)
+                fait += len(buf)
+                JOB["ff"] = fait / taille if taille else 1
+                JOB["pct"] = job_pct()
+        if os.path.getsize(tmp) != taille:
+            raise RuntimeError("Copie incomplète : " + os.path.basename(dst))
+        shutil.copystat(src, tmp)
+        if os.path.exists(dst):
+            raise RuntimeError("Destination existe déjà : " + dst)
+        os.replace(tmp, dst)
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
     JOB["ff"] = 0
+
+
+def _defaire(actions):
+    """Défait des actions de rangement (de la dernière à la première). Chaque action est indépendante : une erreur n'arrête
+    pas les suivantes. Renvoie la liste des erreurs (vide si tout est revenu comme avant)."""
+    erreurs = []
+    for a in reversed(actions):
+        try:
+            if a["type"] == "copy" and os.path.exists(a["to"]):
+                os.remove(a["to"])
+            elif a["type"] == "rename" and os.path.exists(a["to"]):
+                if os.path.exists(a["from"]):
+                    raise RuntimeError("le nom d'origine est déjà pris : " + a["from"])
+                os.rename(a["to"], a["from"])
+            elif a["type"] == "nfo" and os.path.exists(a["backup"]):
+                shutil.copyfile(a["backup"], a["path"])
+            elif a["type"] == "unmonitor":
+                ep = sonarr("GET", "/episode/%d" % a["episodeId"])
+                ep["monitored"] = True
+                sonarr("PUT", "/episode/%d" % a["episodeId"], ep)
+        except Exception as ex:
+            erreurs.append("%s : %s" % (a.get("to") or a.get("path") or a.get("episodeId"), ex))
+    return erreurs
 
 
 def _execute(c, plan, st):
@@ -860,6 +986,9 @@ def _execute(c, plan, st):
                 t = re.sub(r"<episode>\d+</episode>", "<episode>%d</episode>" % op["episode"], t)
                 t = re.sub(r"\s*<airsbefore_(season|episode)>\d+</airsbefore_\1>", "", t)
                 t = re.sub(r"\s*<airsafter_season>\d+</airsafter_season>", "", t)
+                if op.get("title"):
+                    from xml.sax.saxutils import escape as _esc
+                    t = re.sub(r"<title>.*?</title>", lambda _m: "<title>%s</title>" % _esc(op["title"]), t, count=1, flags=re.S)
                 if op.get("part"):
                     # Deux spéciaux au même endroit : Emby les range alors par ordre alphabétique du titre. Un titre de tri
                     # « 01 … », « 02 … » impose l'ordre des parties.
@@ -883,11 +1012,16 @@ def _execute(c, plan, st):
         save_state(st)
         return {"ok": True, "manifest": mpath, "actions": len(manifest["actions"])}
     except Exception as ex:
-        manifest["status"] = "error: %s" % ex
+        # Erreur en cours de route : on remet tout comme avant, pour ne jamais laisser un crossover à moitié rangé
+        JOB.update(label="Erreur : remise en état…")
+        restes = _defaire(manifest["actions"])
+        manifest["status"] = "error: %s" % ex + (" (remise en état incomplète)" if restes else " (tout a été remis comme avant)")
+        manifest["restes"] = restes
         flush()
         st["history"].insert(0, {"id": c["id"], "name": c["name"], "action": "error", "date": manifest["date"], "detail": str(ex)})
         save_state(st)
-        return {"ok": False, "error": str(ex), "manifest": mpath, "actions": len(manifest["actions"])}
+        msg = str(ex) + (" — tout a été remis comme avant." if not restes else " — attention, remise en état incomplète : " + " ; ".join(restes))
+        return {"ok": False, "error": msg, "manifest": mpath, "actions": len(manifest["actions"])}
 
 
 def undo(cid, st):
@@ -898,18 +1032,13 @@ def undo(cid, st):
         manifest = json.load(f)
     JOB.update(state="running", kind="undo", name=manifest.get("name", ""), total=len(manifest["actions"]), done=0, sub_i=0, sub_n=1,
                ff=0, pct=0, label="Remise en état…", message="", emby="", ok=None)
-    for a in reversed(manifest["actions"]):
-        JOB.update(done=JOB["done"] + 1, pct=job_pct())
-        if a["type"] == "copy" and os.path.exists(a["to"]):
-            os.remove(a["to"])
-        elif a["type"] == "rename" and os.path.exists(a["to"]):
-            os.rename(a["to"], a["from"])
-        elif a["type"] == "nfo" and os.path.exists(a["backup"]):
-            shutil.copyfile(a["backup"], a["path"])
-        elif a["type"] == "unmonitor":
-            ep = sonarr("GET", "/episode/%d" % a["episodeId"])
-            ep["monitored"] = True
-            sonarr("PUT", "/episode/%d" % a["episodeId"], ep)
+    JOB.update(done=len(manifest["actions"]), pct=99)
+    erreurs = _defaire(manifest["actions"])
+    if erreurs:
+        manifest["restes"] = erreurs
+        with open(mpath, "w", encoding="utf-8") as f:
+            json.dump(manifest, f, ensure_ascii=False, indent=1)
+        return {"ok": False, "error": "Annulation incomplète (on peut la relancer) : " + " ; ".join(erreurs[:3])}
     manifest["status"] = "undone"
     with open(mpath, "w", encoding="utf-8") as f:
         json.dump(manifest, f, ensure_ascii=False, indent=1)

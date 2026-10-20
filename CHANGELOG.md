@@ -2,6 +2,13 @@
 
 La version affichée dans l'appli est `v1.0.N (hash)` : N est le nombre de commits depuis la version de base.
 
+## [1.0] — 2026-10-20 (audit)
+- 📼 **Saison que tu ne gardes plus** : quand un crossover touche une saison que tu n'as plus (tu ne gardes que les saisons pas encore vues), l'appli te demande si tu veux quand même l'ajouter dans cette série. « Seulement dans les autres séries » : l'épisode sert juste de source, puis il est retiré, sans garder de dossier de saison.
+- 🛡️ **Rangement sûr** : en cas d'erreur en cours de route, tout est remis comme avant automatiquement ; une copie n'apparaît sous son nom qu'une fois complète ; une annulation qui rencontre un problème ne perd plus le journal et peut être relancée.
+- 🔗 **Plus de crossover « perdu »** : quand une nouvelle partie est détectée ou qu'un épisode invité s'ajoute, le crossover garde son rangement, sa correction et sa mise de côté.
+- 🩹 Une copie dont Emby a remplacé le titre est reconnue (à sa taille) et son titre est remis, au lieu d'être copiée une deuxième fois.
+- Un double appui sur « Organiser » ne lance plus deux rangements ; « Rétablir la détection automatique » ne bloque plus le défilement de la page.
+
 ## [1.0] — 2026-10-20
 - 🎨 **Interface commune, version 2** (identique dans les cinq applis) : les fenêtres et les bulles de message suivent les couleurs du skin choisi, les fenêtres plus hautes que l'écran défilent avec leurs boutons collés en bas, la touche « retour » du téléphone ferme la fenêtre ouverte au lieu de quitter l'appli, et le **logo de l'en-tête et l'icône de l'onglet changent de couleur avec le skin**.
 
