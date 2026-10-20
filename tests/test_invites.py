@@ -119,5 +119,34 @@ class TestRangementInvite(unittest.TestCase):
         self.assertFalse([p for p in (TMP / "series" / "Chicago Fire").rglob("*.nfo") if "INVIT" in p.name.upper()])
 
 
+class TestDepot(unittest.TestCase):
+    """Fichiers déposés à la main à la racine du dossier de passage."""
+
+    def test_fichier_depose_reconnu(self):
+        passage = Path(engine.staging_dir())
+        passage.mkdir(parents=True, exist_ok=True)
+        serie = passage / "Law & Order - Special Victims Unit"
+        (passage / "New.York.Unité.Spéciale.S16E07b.1080p.MULTi.WEBRip.AvALoN.mkv").write_bytes(b"x" * 10)
+        (passage / "Autre.S01E01.mkv").write_bytes(b"y")
+        engine.save_state({"ignored": [], "done": {}, "history": [], "guests": [
+            {"id": "g1", "cid": "c", "with": [], "tvdbId": 1, "title": "Law & Order: Special Victims Unit", "season": 16, "episode": 7,
+             "part": 2, "status": "attente", "message": "", "sonarrId": 9, "episodeId": 70, "next_try": 0, "created": 0}]})
+        appels = []
+
+        def faux(methode, chemin, corps=None):
+            appels.append((methode, chemin, corps))
+            return {"path": str(serie)} if chemin == "/series/9" else {"hasFile": False, "seasonNumber": 16, "episodeNumber": 7, "monitored": True, "id": 70}
+        ancien = engine.sonarr
+        engine.sonarr = faux
+        try:
+            self.assertEqual(invites.deposer(maintenant=True), 1)
+        finally:
+            engine.sonarr = ancien
+        rangé = serie / "Season 16" / "Law & Order - Special Victims Unit.S16E07.1080p.MULTi.WEBRip.AvALoN.mkv"
+        self.assertTrue(rangé.exists())
+        self.assertTrue((passage / "Autre.S01E01.mkv").exists())      # sans demande correspondante : on n'y touche pas
+        self.assertIn(("POST", "/command", {"name": "RescanSeries", "seriesId": 9}), appels)
+
+
 if __name__ == "__main__":
     unittest.main()

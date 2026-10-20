@@ -228,6 +228,33 @@ def api_telecharger(eid):
     return jsonify({"ok": True})
 
 
+@app.route("/api/episodes/<int:eid>/sources")
+def api_sources(eid):
+    import invites
+    try:
+        return jsonify({"ok": True, "sources": invites.sources(eid)})
+    except Exception as ex:
+        return jsonify({"ok": False, "error": "Sonarr ne répond pas : %s" % ex}), 502
+
+
+@app.route("/api/episodes/<int:eid>/source", methods=["POST"])
+def api_source(eid):
+    import invites
+    body = request.get_json(silent=True) or {}
+    try:
+        invites.choisir_source(str(body.get("guid", "")), int(body.get("indexerId")))
+        engine.noter_demande(eid)
+    except Exception as ex:
+        return jsonify({"ok": False, "error": "Sonarr n'a pas pu lancer cette source : %s" % ex}), 502
+    return jsonify({"ok": True})
+
+
+@app.route("/api/invites/deposer", methods=["POST"])
+def api_deposer():
+    import invites
+    return jsonify({"ok": True, "pris": invites.deposer(maintenant=True), "dossier": engine.staging_dir()})
+
+
 @app.route("/api/invites/<gid>/<action>", methods=["POST"])
 def api_invite_action(gid, action):
     import invites

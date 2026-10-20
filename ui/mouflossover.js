@@ -208,6 +208,28 @@
     toast(r.ok ? "Demande envoyée : l'appli s'occupe de tout." : (r.error || 'Échec'), r.ok ? 'ok' : 'err'); load(false);
   }
 
+  // Choix de la version à télécharger : toutes les sources trouvées par les indexeurs, les mieux partagées d'abord
+  async function sources(titre, eid) {
+    var choix = null, zone = h('div', {class: 'mf-fix'}, h('p', {class: 'mou-msub'}, 'Recherche chez vos indexeurs… (jusqu\'à 30 secondes)'));
+    var body = h('div', {}, h('p', {class: 'mou-msub'}, 'Choisis la version à télécharger. Celles qui ont des partageurs (seeds) arrivent en premier ; sans partageur, un téléchargement ne démarre pas.'), zone);
+    var promesse = dlg('Sources pour ' + titre, body, 'Télécharger cette version');
+    api('/api/episodes/' + eid + '/sources').then(function (r) {
+      if (!r.ok || !r.sources.length) { zone.replaceChildren(h('p', {class: 'mou-msub'}, r.error || 'Aucune version trouvée chez vos indexeurs pour le moment.')); return; }
+      zone.replaceChildren.apply(zone, r.sources.map(function (x) {
+        var go = x.size ? (x.size / 1073741824).toFixed(1).replace('.', ',') + ' Go' : '';
+        var seeds = x.protocol === 'torrent' ? (x.seeders || 0) + ' partageur(s)' : 'usenet';
+        return h('label', {class: 'mf-src' + (x.rejected ? ' off' : '')},
+          h('input', {type: 'radio', name: 'mfSrc', onchange: function () { choix = x; }}),
+          h('span', {}, h('b', {}, x.title), h('small', {}, [x.indexer, seeds, go, x.quality, x.langues].filter(Boolean).join(' · ')),
+            x.rejected ? h('small', {class: 'mf-bad'}, 'Écartée par Sonarr : ' + x.raison) : null));
+      }));
+    });
+    if (!await promesse) return;
+    if (!choix) { toast("Choisis d'abord une version dans la liste.", 'err'); return; }
+    var r = await post('/api/episodes/' + eid + '/source', {guid: choix.guid, indexerId: choix.indexerId});
+    toast(r.ok ? 'Téléchargement lancé avec cette version.' : (r.error || 'Échec'), r.ok ? 'ok' : 'err'); load(false);
+  }
+
   // Crossover décrit à la main (quand la détection automatique n'a rien vu)
   async function ajouterManuel() {
     var rep = await api('/api/series');
@@ -303,7 +325,8 @@
             var r = await post('/api/episodes/' + p.episodeId + '/telecharger');
             toast(r.ok ? 'Recherche lancée chez vos indexeurs : « Actualiser » quand il sera téléchargé.' : (r.error || 'Échec'), r.ok ? 'ok' : 'err');
             if (!r.ok) b.disabled = false; else b.textContent = '⏳ Recherche lancée';
-          }}, '⬇️ Télécharger cet épisode') : null));
+          }}, '⬇️ Télécharger cet épisode') : null,
+          (!p.hasFile && p.source !== 'invite' && !/Invites/i.test(p.path || '')) ? h('button', {type: 'button', class: 'mou-btn ghost small mf-dl', onclick: function () { sources(p.series + ' S' + pad(p.season) + 'E' + pad(p.ep), p.episodeId); }}, '🔎 Choisir la version') : null));
     });
     var issues = [];
     c.blockers.forEach(function (b) { var e = explainBlocker(b); issues.push(h('div', {class: 'mf-issue bad'}, h('b', {}, e.icon + ' ' + e.t), e.d ? h('p', {}, e.d) : null, e.files.length ? h('ul', {}, e.files.map(function (f) { return h('li', {}, f); })) : null)); });
@@ -317,7 +340,10 @@
       var etapes = {ajout: '1/4 Ajout de la série', recherche: '2/4 Recherche', attente: '3/4 Téléchargement', pret: '4/4 Reçu'};
       return h('div', {class: 'mf-issue'}, h('b', {}, '📥 Épisode invité : ' + g.title + ' S' + pad(g.season) + 'E' + pad(g.episode)),
         h('p', {}, (etapes[g.status] || g.status) + ' — ' + (g.message || '')),
-        h('div', {class: 'mf-actions'}, g.status !== 'pret' ? h('button', {type: 'button', class: 'mou-btn ghost small', onclick: async function () { await post('/api/invites/' + g.id + '/retry'); toast('Nouvel essai lancé', 'ok'); load(false); }}, 'Réessayer') : null,
+        g.status !== 'pret' ? h('p', {class: 'mf-note'}, 'Tu as déjà le fichier ? Dépose-le tel quel dans le dossier de passage (son nom doit contenir S' + pad(g.season) + 'E' + pad(g.episode) + ') : il sera reconnu et rangé tout seul.') : null,
+        h('div', {class: 'mf-actions'}, g.status !== 'pret' && g.episodeId ? h('button', {type: 'button', class: 'mou-btn ghost small', onclick: function () { sources(g.title + ' S' + pad(g.season) + 'E' + pad(g.episode), g.episodeId); }}, '🔎 Choisir la version') : null,
+          g.status !== 'pret' ? h('button', {type: 'button', class: 'mou-btn ghost small', onclick: async function () { var r = await post('/api/invites/deposer'); toast(r.pris ? r.pris + ' fichier(s) déposé(s) reconnu(s) et rangé(s).' : 'Aucun fichier déposé à reconnaître pour l\'instant.', r.pris ? 'ok' : 'err'); load(false); }}, '📂 Chercher un fichier déposé') : null,
+          g.status !== 'pret' ? h('button', {type: 'button', class: 'mou-btn ghost small', onclick: async function () { await post('/api/invites/' + g.id + '/retry'); toast('Nouvel essai lancé', 'ok'); load(false); }}, 'Réessayer') : null,
           g.status !== 'pret' ? h('button', {type: 'button', class: 'mou-btn ghost small', onclick: async function () { await post('/api/invites/' + g.id + '/cancel'); load(false); }}, 'Annuler la demande') : null));
     })) : null;
     var acts = h('div', {class: 'mf-actions'});

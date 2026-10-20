@@ -485,7 +485,8 @@ def file_dl():
             for r in (sonarr("GET", "/queue?pageSize=200") or {}).get("records", []):
                 taille = r.get("size") or 0
                 d[r.get("episodeId")] = {"pct": int(100 * (taille - (r.get("sizeleft") or 0)) / taille) if taille else 0,
-                                         "status": r.get("status"), "avert": r.get("trackedDownloadStatus") == "warning"}
+                                         "status": r.get("status"), "avert": r.get("trackedDownloadStatus") == "warning",
+                                         "id": r.get("id"), "added": r.get("added") or ""}
         except Exception:
             d = _QCACHE["d"]
         _QCACHE.update(t=time.time(), d=d)

@@ -9,6 +9,8 @@ continue donc de partager) et la série invitée reste dans Sonarr, sans épisod
 """
 import logging
 import os
+import re
+import shutil
 import threading
 import time
 import urllib.parse
@@ -21,6 +23,111 @@ TAG = "mouflossover-invite"
 RECHERCHE_TOUTES_LES = 6 * 3600          # nouvelle recherche si rien n'est arrivé
 VERIFIE_TOUTES_LES = 60
 ETATS_FINAUX = ("pret", "annule")
+
+
+VIDEO = (".mkv", ".mp4", ".avi", ".m4v")
+RX_SE = re.compile(r"[Ss](\d{1,2})[Ee](\d{1,3})(?!\d)")
+BLOQUE_APRES = 4 * 3600          # source sans seed : on la remplace après 4 h
+MAX_REMPLACEMENTS = 5
+_VUS = {}                          # fichier déposé -> taille vue au passage précédent (pour attendre la fin de la copie)
+
+
+def _mots(texte):
+    import unicodedata
+    t = unicodedata.normalize("NFKD", texte or "").encode("ascii", "ignore").decode().lower()
+    return {m for m in re.findall(r"[a-z0-9]+", t) if len(m) > 2}
+
+
+def deposer(maintenant=False):
+    """Fichiers déposés à la main à la racine du dossier de passage (ex. « Serie.S16E20c.1080p…mkv ») : si le numéro de saison
+    et d'épisode correspond à une demande en attente, le fichier est rangé dans le dossier de la série invitée, puis Sonarr le relit.
+    Renvoie le nombre de fichiers pris en charge."""
+    dossier = engine.staging_dir()
+    attente = [g for g in _guests() if g["status"] in ("recherche", "attente") and g.get("sonarrId")]
+    if not attente or not os.path.isdir(dossier):
+        return 0
+    pris = 0
+    for f in sorted(os.listdir(dossier)):
+        p = os.path.join(dossier, f)
+        m = RX_SE.search(f)
+        if not (os.path.isfile(p) and f.lower().endswith(VIDEO) and m):
+            continue
+        sa, ep = int(m.group(1)), int(m.group(2))
+        cands = [g for g in attente if g["season"] == sa and g["episode"] == ep]
+        if len(cands) > 1:
+            fm = _mots(f)
+            cands = sorted(cands, key=lambda g: -len(_mots(g["title"]) & fm))
+            if len(_mots(cands[0]["title"]) & fm) == len(_mots(cands[1]["title"]) & fm):
+                continue
+        if not cands:
+            continue
+        g = cands[0]
+        taille = os.path.getsize(p)
+        if not maintenant and (time.time() - os.path.getmtime(p) < 90 or _VUS.get(p) != taille):
+            _VUS[p] = taille                       # copie peut-être encore en cours : on revérifie au prochain passage
+            continue
+        try:
+            serie = engine.sonarr("GET", "/series/%d" % g["sonarrId"])
+            reste = re.sub(r"^[a-zA-Z](?=[.\s_-])", "", f[m.end():])
+            cible = os.path.join(serie["path"], "Season %02d" % sa)
+            os.makedirs(cible, exist_ok=True)
+            shutil.move(p, os.path.join(cible, "%s.S%02dE%02d%s" % (os.path.basename(serie["path"].rstrip("/")), sa, ep, reste)))
+            engine.sonarr("POST", "/command", {"name": "RescanSeries", "seriesId": g["sonarrId"]})
+            if g.get("episodeId"):
+                q = engine.file_dl().get(g["episodeId"])
+                if q and q.get("id"):               # plus besoin de télécharger : on retire la demande en attente chez Sonarr
+                    engine.sonarr("DELETE", "/queue/%d?removeFromClient=false&blocklist=false" % q["id"])
+            _maj(g["id"], message="Fichier déposé reconnu et rangé : Sonarr le relit", next_try=0)
+            threading.Thread(target=_un_pas, args=(g["id"],), daemon=True).start()
+            _VUS.pop(p, None)
+            pris += 1
+        except Exception as ex:
+            logger.warning("Fichier déposé %s : %s", f, ex)
+    return pris
+
+
+def debloquer(eid):
+    """Téléchargement bloqué (aucune source) depuis plus de 4 h : on le retire en l'ajoutant à la liste noire, et Sonarr
+    cherche alors la version suivante. Renvoie True si une autre source a été demandée."""
+    q = engine.file_dl().get(eid)
+    if not q or not q.get("id") or not (q["status"] == "warning" or q["avert"]):
+        return False
+    try:
+        import calendar
+        depuis = time.time() - calendar.timegm(time.strptime(q["added"][:19], "%Y-%m-%dT%H:%M:%S")) if q["added"] else 0
+    except ValueError:
+        depuis = 0
+    if depuis < BLOQUE_APRES:
+        return False
+    with engine.LOCK:
+        st = engine.load_state()
+        n = st.setdefault("remplacements", {}).get(str(eid), 0)
+        if n >= MAX_REMPLACEMENTS:
+            return False
+        st["remplacements"][str(eid)] = n + 1
+        engine.save_state(st)
+    engine.sonarr("DELETE", "/queue/%d?removeFromClient=true&blocklist=true" % q["id"])
+    engine.sonarr("POST", "/command", {"name": "EpisodeSearch", "episodeIds": [eid]})
+    return True
+
+
+def sources(eid):
+    """Versions disponibles chez vos indexeurs pour un épisode (recherche manuelle de Sonarr), les mieux partagées d'abord."""
+    res = engine.sonarr("GET", "/release?episodeId=%d" % eid) or []
+    out = []
+    for r in res:
+        out.append({"guid": r.get("guid"), "indexerId": r.get("indexerId"), "title": r.get("title"), "indexer": r.get("indexer"),
+                    "seeders": r.get("seeders"), "leechers": r.get("leechers"), "size": r.get("size") or 0,
+                    "quality": ((r.get("quality") or {}).get("quality") or {}).get("name", ""),
+                    "langues": ", ".join(l.get("name", "") for l in r.get("languages") or []),
+                    "protocol": r.get("protocol"), "rejected": bool(r.get("rejected")),
+                    "raison": "; ".join(r.get("rejections") or [])[:140]})
+    out.sort(key=lambda x: (x["rejected"], -(x["seeders"] or 0)))
+    return out[:25]
+
+
+def choisir_source(guid, indexer_id):
+    return engine.sonarr("POST", "/release", {"guid": guid, "indexerId": indexer_id})
 
 
 def lookup(terme):
@@ -137,6 +244,13 @@ def _un_pas(gid):
                 changement = True
         elif g["status"] == "attente":
             ep = _episode(g)
+            if ep and not ep.get("hasFile") and time.time() - g.get("last_scan", 0) > 120:
+                serie = engine.sonarr("GET", "/series/%d" % g["sonarrId"]) or {}
+                if any(f.lower().endswith(VIDEO) for _, _, fs in os.walk(serie.get("path", "/nonexistent")) for f in fs):
+                    engine.sonarr("POST", "/command", {"name": "RescanSeries", "seriesId": g["sonarrId"]})
+                    _maj(gid, last_scan=time.time())
+            if ep and not ep.get("hasFile") and g.get("episodeId") and debloquer(g["episodeId"]):
+                _maj(gid, message="Source sans partage remplacée : Sonarr cherche une autre version")
             if ep and ep.get("hasFile"):
                 _maj(gid, status="pret", message="Épisode reçu")
                 changement = True
@@ -164,6 +278,10 @@ def relancer_demandes():
     """Épisodes demandés par le bouton « Télécharger » : nouvelle recherche toutes les 6 h tant qu'ils ne sont pas là."""
     maintenant = time.time()
     for eid, d in list(engine.load_state().get("demandes", {}).items()):
+        try:
+            debloquer(int(eid))
+        except Exception:
+            logger.exception("Remplacement d'une source bloquée")
         if maintenant - d.get("last", 0) < RECHERCHE_TOUTES_LES:
             continue
         ep = engine.sonarr("GET", "/episode/%s" % eid)
@@ -188,6 +306,7 @@ def boucle():
                 if g["status"] not in ETATS_FINAUX and maintenant >= g.get("next_try", 0):
                     _un_pas(g["id"])
             relancer_demandes()
+            deposer()
         except Exception:
             logger.exception("Boucle des épisodes invités")
 
@@ -249,5 +368,5 @@ def suggestions(c):
 
 def pour_carte(c_keys):
     """Demandes liées à une carte (celles dont les parties d'origine sont toutes dans le crossover)."""
-    return [{"id": g["id"], "title": g["title"], "season": g["season"], "episode": g["episode"], "status": g["status"],
+    return [{"id": g["id"], "episodeId": g.get("episodeId"), "title": g["title"], "season": g["season"], "episode": g["episode"], "status": g["status"],
              "message": g.get("message", "")} for g in _guests() if g["status"] != "annule" and set(g["with"]) <= c_keys]
