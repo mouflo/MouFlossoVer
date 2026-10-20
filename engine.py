@@ -964,4 +964,9 @@ def start_background():
     tvdb.demarrer()
     import enwiki
     enwiki.demarrer()
-    threading.Thread(target=lambda: (time.sleep(20), wiki_scan()), daemon=True).start()
+    def wiki_quotidien():
+        time.sleep(20)
+        while True:
+            wiki_scan()          # ne relit que les séries nouvelles ou dont l analyse a plus de 30 jours
+            time.sleep(24 * 3600)
+    threading.Thread(target=wiki_quotidien, daemon=True).start()
