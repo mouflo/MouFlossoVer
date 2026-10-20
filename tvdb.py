@@ -104,6 +104,8 @@ def scan(force=False):
         for s in series:
             sid = str(s["id"])
             ETAT["done"] += 1
+            if not force and s.get("ended") and sid in d["scanned"]:
+                continue          # série terminée déjà lue une fois : plus rien de nouveau à attendre
             st_ = s.get("statistics") or {}
             signature = "%s|%s|%s" % (st_.get("episodeCount"), st_.get("episodeFileCount"), s.get("previousAiring") or st_.get("previousAiring"))
             sig = d.setdefault("sig", {})

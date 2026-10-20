@@ -750,6 +750,9 @@ def wiki_scan(force=False):
         series = sonarr("GET", "/series")
         WIKISTATE["total"] = len(series)
         for s in series:
+            if not force and s.get("ended") and WIKI.deja_analysee(s["title"]):
+                WIKISTATE["done"] += 1          # série terminée déjà analysée une fois : plus de crossover possible après sa fin
+                continue
             try:
                 WIKI.claims(s["title"], force=force)
             except Exception:

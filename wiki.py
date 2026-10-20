@@ -291,6 +291,11 @@ class Wiki:
             self.db.execute("UPDATE wiki_series SET scanned_at=0 WHERE series=?", (series,))
             self.db.commit()
 
+    def deja_analysee(self, series):
+        """Cette série a-t-elle déjà été analysée au moins une fois ? (sert à ne plus relire les séries terminées)"""
+        with self.lock:
+            return self.db.execute("SELECT 1 FROM wiki_series WHERE series=?", (series,)).fetchone() is not None
+
     def count(self):
         with self.lock:
             return self.db.execute("SELECT COUNT(*) FROM wiki_series").fetchone()[0]
