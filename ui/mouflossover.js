@@ -330,7 +330,16 @@
     });
     var issues = [];
     c.blockers.forEach(function (b) { var e = explainBlocker(b); issues.push(h('div', {class: 'mf-issue bad'}, h('b', {}, e.icon + ' ' + e.t), e.d ? h('p', {}, e.d) : null, e.files.length ? h('ul', {}, e.files.map(function (f) { return h('li', {}, f); })) : null)); });
-    c.warnings.forEach(function (w) { var e = explainWarning(w); issues.push(h('div', {class: 'mf-issue'}, h('b', {}, 'ℹ️ ' + e.t), e.d ? h('p', {}, e.d) : null)); });
+    c.warnings.forEach(function (w) {
+      var e = explainWarning(w);
+      var cree = /pas de NFO/.test(w) ? h('button', {type: 'button', class: 'mou-btn ghost small', onclick: async function (ev) {
+        ev.currentTarget.disabled = true;
+        var r = await post('/api/crossovers/' + c.id + '/fiches');
+        toast(r.ok ? (r.faits.length ? 'Fiche créée : ' + r.faits.join(', ') : 'Aucune fiche à créer.') : (r.error || 'Échec'), r.ok ? 'ok' : 'err'); load(false);
+      }}, '📝 Créer la fiche sans risque') : null;
+      issues.push(h('div', {class: 'mf-issue'}, h('b', {}, 'ℹ️ ' + e.t), e.d ? h('p', {}, e.d) : null,
+        cree ? h('p', {class: 'mf-note'}, "Ne remplace jamais une fiche existante. Elle reprend le titre et le résumé qu'Emby affiche déjà : rien ne change à l'écran.") : null, cree));
+    });
     var wk = (c.wiki && c.wiki.length) ? h('div', {class: 'mf-wiki'}, h('div', {class: 'mf-cap'}, 'Pour vérifier (Wikipédia, TheTVDB)'),
       c.wiki.map(function (w) {
         return h('div', {class: 'mf-wk'}, h('a', {href: w.url, target: '_blank', rel: 'noopener noreferrer'}, '📖 ' + w.page + ' ↗'),

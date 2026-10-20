@@ -531,6 +531,43 @@ def part_list(c):
     return out
 
 
+def creer_fiches_manquantes(c, emby_mod=None):
+    """Crée la fiche (NFO) des épisodes d'origine qui n'en ont pas, SANS jamais écraser une fiche existante.
+    Le contenu reprend ce qu'Emby affiche déjà pour l'épisode (titre, résumé, date), à défaut les données de Sonarr :
+    l'affichage ne change donc pas. Renvoie la liste des épisodes complétés."""
+    from xml.sax.saxutils import escape
+    faits = []
+    for k, v in c["parts"].items():
+        s, e = v["s"], v["e"]
+        if est_invite(s["path"]) or not e.get("hasFile"):
+            continue
+        o = find_own({"title": s["title"], "path": s["path"]}, {"season": e["seasonNumber"], "ep": e["episodeNumber"], "part": v["part"]})
+        if o["state"] not in ("plain", "tagged"):
+            continue
+        nfo = os.path.join(o["dir"], stem_of(o["file"]) + ".nfo")
+        if os.path.exists(nfo):
+            continue
+        titre, resume, date = e.get("title") or "", e.get("overview") or "", e.get("airDate") or ""
+        try:
+            if emby_mod and emby_mod.configured() and e.get("tvdbId"):
+                r = emby_mod._call("GET", "/Items", {"Recursive": "true", "IncludeItemTypes": "Episode",
+                                                     "AnyProviderIdEquals": "tvdb.%d" % e["tvdbId"], "Fields": "Path,Overview,PremiereDate"})
+                it = next((x for x in r.get("Items", []) if os.path.basename(x.get("Path", "")).startswith(o["file"][:-4])), None)
+                if it:
+                    titre, resume = it.get("Name") or titre, it.get("Overview") or resume
+                    date = (it.get("PremiereDate") or "")[:10] or date
+        except Exception:
+            pass
+        corps = ('<?xml version="1.0" encoding="utf-8" standalone="yes"?>\n<episodedetails>\n  <title>%s</title>\n  <plot>%s</plot>\n'
+                 '  <aired>%s</aired>\n  <episode>%d</episode>\n  <season>%d</season>\n' % (escape(titre), escape(resume), date, e["episodeNumber"], e["seasonNumber"]))
+        if e.get("tvdbId"):
+            corps += '  <uniqueid type="tvdb" default="true">%d</uniqueid>\n' % e["tvdbId"]
+        with open(nfo, "x", encoding="utf-8") as f:          # « x » : refuse d'écraser un fichier qui existerait
+            f.write(corps + "</episodedetails>\n")
+        faits.append("%s S%02dE%02d" % (s["title"], e["seasonNumber"], e["episodeNumber"]))
+    return faits
+
+
 def make_plan(c):
     # Épisode invité déjà copié partout puis retiré du dossier de passage : il n'y a plus rien à faire pour lui
     parts = [p for p in part_list(c) if not (p["nettoye"] and est_invite(p["path"]))]

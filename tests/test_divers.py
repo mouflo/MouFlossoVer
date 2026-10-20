@@ -174,3 +174,31 @@ class TestSensUnique(unittest.TestCase):
         self.assertEqual(len(copies), 1)
         self.assertIn("Chicago Med", copies[0]["dir"])       # la partie de Fire est copiée dans Med, pas l'inverse
         self.assertEqual(len([o for o in un["ops"] if o["kind"] == "rename_group"]), 2)
+
+
+class TestFicheManquante(unittest.TestCase):
+    def test_creation_sans_ecrasement(self):
+        import test_engine as te
+        d, stem = te.fabriquer("Serie Sans Fiche", 2, 3, "Titre Sonarr")
+        os.remove(d / (stem + ".nfo"))
+        parts = {(31, 2, 3): {"s": {"id": 31, "title": "Serie Sans Fiche", "path": str(te.TMP / "series" / "Serie Sans Fiche")},
+                              "e": {"id": 601, "seasonNumber": 2, "episodeNumber": 3, "title": "Titre Sonarr", "overview": "Resume", "hasFile": True,
+                                    "airDate": "2020-02-02", "tvdbId": 4242}, "part": 1, "src": "sonarr"}}
+        c = {"id": "f", "parts": parts}
+
+        class FauxEmby:
+            @staticmethod
+            def configured():
+                return True
+
+            @staticmethod
+            def _call(m, p, q=None):
+                return {"Items": [{"Path": str(d / (stem + ".mkv")), "Name": "Titre français", "Overview": "Résumé français", "PremiereDate": "2020-02-03T00:00:00Z"}]}
+        faits = te.engine.creer_fiches_manquantes(c, FauxEmby)
+        self.assertEqual(len(faits), 1)
+        texte = (d / (stem + ".nfo")).read_text(encoding="utf-8")
+        self.assertIn("<title>Titre français</title>", texte)
+        self.assertIn('<uniqueid type="tvdb" default="true">4242</uniqueid>', texte)
+        (d / (stem + ".nfo")).write_text("MA FICHE", encoding="utf-8")
+        self.assertEqual(te.engine.creer_fiches_manquantes(c, FauxEmby), [])          # jamais d'écrasement
+        self.assertEqual((d / (stem + ".nfo")).read_text(encoding="utf-8"), "MA FICHE")

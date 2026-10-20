@@ -335,6 +335,22 @@ def api_manuel_supprimer(mid):
     return jsonify({"ok": True})
 
 
+@app.route("/api/crossovers/<cid>/fiches", methods=["POST"])
+def api_fiches(cid):
+    """Crée les fiches manquantes des épisodes d'origine (jamais d'écrasement), puis demande à Emby de les relire."""
+    c = engine.find_crossover(cid)
+    if not c:
+        return jsonify({"ok": False, "error": "Crossover introuvable : actualise la liste."}), 404
+    try:
+        faits = engine.creer_fiches_manquantes(c, emby)
+    except Exception as ex:
+        return jsonify({"ok": False, "error": "Impossible de créer la fiche : %s" % ex}), 500
+    if faits:
+        emby.actualiser(_dossiers(c))
+    engine.refresh()
+    return jsonify({"ok": True, "faits": faits})
+
+
 @app.route("/api/crossovers/<cid>/fix", methods=["POST"])
 def api_fix(cid):
     """Correction à la main : ordre des parties et parties à retirer (ou retour à la détection automatique)."""
