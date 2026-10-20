@@ -622,6 +622,14 @@ def make_plan(c):
                     continue
                 if not m.group(2) and not (ow_title and ni):
                     continue
+                if not ow_title:
+                    # Épisode d'origine sans fiche : on ne peut pas comparer les titres. Plusieurs copies portent alors la même
+                    # étiquette (ex. part1(FIRE)) : la bonne est celle qui a exactement la taille du fichier d'origine.
+                    try:
+                        if os.path.getsize(os.path.join(sdir, f)) != os.path.getsize(os.path.join(ow["dir"], ow["file"])):
+                            continue
+                    except OSError:
+                        continue
                 existing = f
                 break
             if existing:
