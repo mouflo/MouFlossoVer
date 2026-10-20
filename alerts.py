@@ -63,7 +63,7 @@ def _titre(c):
 
 
 def _bloc(ev, c):
-    séries = " · ".join(dict.fromkeys(p["series"] for p in c.get("parts", [])))
+    séries = " · ".join(dict.fromkeys(p["series"] for p in list(c.get("parts", [])) + list(c.get("refs", []))))
     tete = "<b>" + html.escape(_titre(c)) + "</b>"
     if c.get("date"):
         tete += " · " + html.escape(_date(c["date"]))

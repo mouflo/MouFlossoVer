@@ -125,3 +125,30 @@ class TestEnwiki(unittest.TestCase):
 Texte."""
         p = enwiki.analyser("NCIS crossover event", texte)
         self.assertEqual([(x["n"], x["series"], x["season"], x["episode"]) for x in p], [(1, "NCIS", 20, 10), (2, "NCIS: Hawaiʻi", 2, 10)])
+
+
+
+class TestEpisodeUnique(unittest.TestCase):
+    """Un épisode où apparaissent des personnages d'une autre série qui n'a pas de suite : une seule partie,
+    copiée dans l'autre série juste avant son épisode repère (rien n'est copié en sens inverse)."""
+
+    def test_plan(self):
+        import test_engine as te
+        da, sa = te.fabriquer("Magnum P.I.", 1, 5, "Visite")
+        db, sb = te.fabriquer("Hawaii Five-0", 7, 19, "Puka ana")
+        mk = lambda sid, titre, sdir, ep: {"id": sid, "title": titre, "path": str(te.TMP / "series" / titre)}
+        parts = {
+            (21, 1, 5): {"s": mk(21, "Magnum P.I.", da, 5), "e": {"id": 501, "seasonNumber": 1, "episodeNumber": 5, "title": "Visite", "hasFile": True,
+                                                                  "monitored": True, "airDate": "2020-01-03"}, "part": 1, "src": "wikipedia"},
+            (22, 7, 19): {"s": mk(22, "Hawaii Five-0", db, 19), "e": {"id": 502, "seasonNumber": 7, "episodeNumber": 19, "title": "Puka ana", "hasFile": True,
+                                                                     "monitored": True, "airDate": "2020-01-03"}, "part": 0, "ref": True, "src": "wikipedia"}}
+        c = {"id": "unique", "name": "Visite", "date": "2020-01-03", "parts": parts}
+        te.engine.sonarr = lambda *a, **k: {"monitored": True}
+        plan = te.engine.make_plan(c)
+        self.assertEqual(plan["blockers"], [])
+        copies = [o for o in plan["ops"] if o["kind"] == "copy_group"]
+        self.assertEqual(len(copies), 1)
+        self.assertIn("Hawaii Five-0", copies[0]["dir"])
+        patch = [o for o in plan["ops"] if o["kind"] == "patch_nfo"]
+        self.assertEqual([o["airs"] for o in patch], [[7, 19]])
+        self.assertEqual(len([o for o in plan["ops"] if o["kind"] == "rename_group"]), 1)      # seule la série qui a la partie est renommée

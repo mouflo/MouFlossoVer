@@ -72,8 +72,8 @@ SEEDS = [
      "parts": [("station 19", 4, 1, 1), ("grey's anatomy", 17, 1, 2), ("grey's anatomy", 17, 2, 3)]},
     {"name": "Seattle en flammes", "date": "2024-05-23", "page": "Grey's Anatomy : Station 19",
      "parts": [("station 19", 7, 9, 1), ("station 19", 7, 10, 2), ("grey's anatomy", 20, 10, 3)]},
-    {"name": "Flashlight / Puka 'ana", "date": "2017-03-10", "page": "MacGyver (série télévisée, 2016)",
-     "parts": [("macgyver (2016)", 1, 18, 1), ("hawaii five-0", 7, 19, 2)]},
+    {"name": "Flashlight", "date": "2017-03-10", "page": "MacGyver (série télévisée, 2016)",
+     "parts": [("macgyver (2016)", 1, 18, 1)], "refs": [("hawaii five-0", 7, 19)]},
 ]
 
 LOCK = threading.RLock()
@@ -198,7 +198,7 @@ def slot_pref(c, sid):
             continue
         ids = [v["s"]["id"] for v in o["parts"].values()]
         if sid in ids:
-            n += sum(1 for i in ids if i != sid)
+            n += sum(1 for v in o["parts"].values() if v["s"]["id"] != sid and not v.get("ref"))
     return n
 
 
@@ -274,6 +274,13 @@ def build_crossovers():
             e = s and next((x for x in episodes_of(s["id"]) if x["seasonNumber"] == season and x["episodeNumber"] == ep), None)
             if e:
                 resolved[(s["id"], season, ep)] = {"s": s, "e": e, "part": None, "src": "wikipedia"}
+        # « refs » : série qui reçoit l'épisode sans avoir de suite à elle (simple apparition de ses personnages). L'épisode
+        # indiqué sert seulement de repère : la copie se place juste avant lui.
+        for title, season, ep in sd.get("refs", []):
+            s = by_title.get(title)
+            e = s and next((x for x in episodes_of(s["id"]) if x["seasonNumber"] == season and x["episodeNumber"] == ep), None)
+            if e:
+                resolved[(s["id"], season, ep)] = {"s": s, "e": e, "part": 0, "ref": True, "src": "wikipedia"}
         if len(resolved) >= 2:
             groups.append({"date": sd["date"], "parts": resolved, "name": sd["name"],
                            "wiki": [{"page": sd["page"], "line": "", "series": ""}]})
@@ -370,12 +377,12 @@ def build_crossovers():
         used = {v["part"] for v in g["parts"].values() if v["part"]}
         free = iter(n for n in range(1, 50) if n not in used)
         for k, v in order:
-            if v["part"] is None:
+            if v["part"] is None and not v.get("ref"):
                 v["part"] = next(free)
         titles = {v["s"]["title"] for v in g["parts"].values()}
         fr = next((fn for fn, rx in FRANCHISES.items() if all(re.search(rx, t.lower()) for t in titles)), None) \
             or next((fn for fn, m in families if titles <= {x["title"] for x in m}), "Autres séries")
-        first = min(g["parts"].values(), key=lambda v: v["part"])
+        first = min((v for v in g["parts"].values() if not v.get("ref")), key=lambda v: v["part"])
         name = g["name"] or PART_RX.sub("", first["e"].get("title") or "").strip() or "Crossover"
         cid = hashlib.sha1("|".join(sorted("%d-%d-%d" % k for k in g["parts"])).encode()).hexdigest()[:10]
         parts = g["parts"]
@@ -385,7 +392,7 @@ def build_crossovers():
             if len({v["s"]["id"] for v in parts.values()}) < 2:
                 continue
             rang = {key: i for i, key in enumerate(fx.get("order", []))}
-            for i, (k, v) in enumerate(sorted(parts.items(), key=lambda kv: (rang.get("%d-%d-%d" % kv[0], 999), kv[1]["part"]))):
+            for i, (k, v) in enumerate(sorted([kv for kv in parts.items() if not kv[1].get("ref")], key=lambda kv: (rang.get("%d-%d-%d" % kv[0], 999), kv[1]["part"]))):
                 v["part"] = i + 1
         items.append({"id": cid, "franchise": fr, "date": g["date"], "parts": parts, "name": name, "wiki": g.get("wiki", []),
                       "fixed": bool(fx)})
@@ -498,7 +505,7 @@ def part_list(c):
                     "part": v["part"], "hasFile": bool(e.get("hasFile")), "episodeId": e["id"],
                     "monitored": bool(e.get("monitored")), "source": v["src"], "path": s["path"],
                     "overview": e.get("overview") or "", "airDate": e.get("airDate") or "",
-                    "dl": dl_etat(e["id"], bool(e.get("hasFile")))})
+                    "dl": dl_etat(e["id"], bool(e.get("hasFile"))), "ref": bool(v.get("ref"))})
     return out
 
 
@@ -508,7 +515,7 @@ def make_plan(c):
     own_ops = []     # renommages des fichiers d'origine : toujours APRÈS les copies, qui lisent encore l'ancien nom
     owners = {}
     sd = series_dir()
-    numeros = sorted(p["part"] for p in parts)
+    numeros = sorted(p["part"] for p in parts if not p["ref"])
     trous = [n for n in range(1, numeros[-1] + 1) if n not in numeros] if numeros else []
     if trous and c["id"] not in load_state().get("done", {}):
         blockers.append("Partie %s manquante : cette partie est dans une série absente de ta bibliothèque (ou un épisode inconnu de Sonarr)"
@@ -528,10 +535,12 @@ def make_plan(c):
             blockers.append("%s S%02dE%02d : plusieurs fichiers candidats (%s)" % (p["series"], p["season"], p["ep"], ", ".join(o["files"])))
         else:
             owners[(p["seriesId"], p["season"], p["ep"])] = o
-            info = nfo_info(os.path.join(o["dir"], stem_of(o["file"]) + ".nfo"))
-            if info:
+            info = None if p["ref"] else nfo_info(os.path.join(o["dir"], stem_of(o["file"]) + ".nfo"))
+            if p["ref"]:
+                pass
+            elif info:
                 m = PART_RX.search(info["title"])
-                if not m or int(m.group(1)) != p["part"]:
+                if (not m or int(m.group(1)) != p["part"]) and len(numeros) > 1:
                     warnings.append("%s : le titre du NFO « %s » ne se termine pas par (%d)" % (p["series"], info["title"], p["part"]))
             elif not est_invite(p["path"]):
                 warnings.append("%s S%02dE%02d : pas de NFO" % (p["series"], p["season"], p["ep"]))
@@ -547,7 +556,7 @@ def make_plan(c):
     allocated = {}
     for p in parts:
         o = owners[(p["seriesId"], p["season"], p["ep"])]
-        if o["state"] == "plain" and not est_invite(p["path"]):
+        if o["state"] == "plain" and not est_invite(p["path"]) and not p["ref"]:
             stem = stem_of(o["file"])
             pre = re.match(r"^(.*?S\d{2}\.?E\d{2})", stem).group(1)
             new_stem = "%s.part%d(%s)%s" % (pre, p["part"], p["tag"], release_suffix(stem))
@@ -558,23 +567,27 @@ def make_plan(c):
                 own_ops.append({"kind": "unmonitor", "episodeId": p["episodeId"],
                             "label": "Ne plus surveiller %s S%02dE%02d dans Sonarr" % (p["series"], p["season"], p["ep"])})
     for sid in series_ids:
-        own_parts = sorted([p for p in parts if p["seriesId"] == sid], key=lambda p: p["part"])
-        t = own_parts[0]
+        own_parts = sorted([p for p in parts if p["seriesId"] == sid and not p["ref"]], key=lambda p: p["part"])
+        repere = next((p for p in parts if p["seriesId"] == sid and p["ref"]), None)
+        t = own_parts[0] if own_parts else repere
         sdir = owners[(t["seriesId"], t["season"], t["ep"])]["dir"]
         spath = t["path"]
         prefix = file_prefix(spath)
         used = used_slots(spath) | allocated.setdefault(sid, set())
         for p in parts:
-            if p["seriesId"] == sid:
+            if p["seriesId"] == sid or p["ref"]:
                 continue
             ow = owners[(p["seriesId"], p["season"], p["ep"])]
             ow_stem = stem_of(ow["file"])
             ow_nfo = nfo_info(os.path.join(ow["dir"], ow_stem + ".nfo"))
             ow_title = ow_nfo["title"] if ow_nfo else None
             nxt = next((q for q in own_parts if q["part"] > p["part"]), None)
-            airs = (nxt["season"], nxt["ep"]) if nxt else (own_parts[-1]["season"], own_parts[-1]["ep"] + 1)
+            if not own_parts:
+                airs = (repere["season"], repere["ep"])       # série sans partie à elle : juste avant l'épisode repère
+            else:
+                airs = (nxt["season"], nxt["ep"]) if nxt else (own_parts[-1]["season"], own_parts[-1]["ep"] + 1)
             existing = None
-            own_files = {owners[(q["seriesId"], q["season"], q["ep"])]["file"] for q in own_parts}
+            own_files = {owners[(q["seriesId"], q["season"], q["ep"])]["file"] for q in (own_parts or [repere])}
             for f in sorted(os.listdir(sdir)):
                 m = PARTANY_RX.search(f)
                 if not f.endswith(".mkv") or f in own_files or not m or int(m.group(1)) != p["part"]:
@@ -647,7 +660,8 @@ def refresh():
                 else:
                     status = "done"
                 out.append({"id": c["id"], "name": c["name"], "franchise": c["franchise"], "date": c["date"],
-                            "status": status, "parts": [{k: v for k, v in p.items() if k != "path"} for p in parts],
+                            "status": status, "parts": [{k: v for k, v in p.items() if k != "path"} for p in parts if not p["ref"]],
+                            "refs": [{"series": p["series"], "season": p["season"], "ep": p["ep"], "title": p["title"]} for p in parts if p["ref"]],
                             "opCount": len(plan["ops"]), "blockers": plan["blockers"], "warnings": plan["warnings"],
                             "applied": c["id"] in st["done"], "wiki": wiki_sources(c), "fixed": c.get("fixed", False),
                             "invites": invites.pour_carte({p["key"] for p in parts})})
