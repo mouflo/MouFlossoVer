@@ -80,7 +80,7 @@
     return ['•', o.label, '', null];
   }
 
-  var busy = function () { return !!document.querySelector('.mou-modal.show') || !!document.querySelector('.mf-plan.open') || document.activeElement === $('#mfQ'); };
+  var busy = function () { return !!document.querySelector('.mou-modal.show') || !!document.querySelector('.mf-plan.open') || document.activeElement === $('#mfQ') || !!document.querySelector('details.mf-wiki[open]'); };
 
   async function load(force) {
     var btn = $('#mfRefresh');
@@ -340,7 +340,7 @@
       issues.push(h('div', {class: 'mf-issue'}, h('b', {}, 'ℹ️ ' + e.t), e.d ? h('p', {}, e.d) : null,
         cree ? h('p', {class: 'mf-note'}, "Ne remplace jamais une fiche existante. Elle reprend le titre et le résumé qu'Emby affiche déjà : rien ne change à l'écran.") : null, cree));
     });
-    var wk = (c.wiki && c.wiki.length) ? h('div', {class: 'mf-wiki'}, h('div', {class: 'mf-cap'}, 'Pour vérifier (Wikipédia, TheTVDB)'),
+    var wk = (c.wiki && c.wiki.length) ? h('details', {class: 'mf-wiki'}, h('summary', {class: 'mf-cap'}, '📖 Pour vérifier (' + c.wiki.length + ' source' + (c.wiki.length > 1 ? 's' : '') + ' : Wikipédia, TheTVDB)'),
       c.wiki.map(function (w) {
         return h('div', {class: 'mf-wk'}, h('a', {href: w.url, target: '_blank', rel: 'noopener noreferrer'}, '📖 ' + w.page + ' ↗'),
           h('small', {}, w.extrait ? '« ' + w.extrait + ' »' : 'Page de la série : aucun passage précis trouvé, cherche « crossover » dans la page.'));

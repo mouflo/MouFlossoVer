@@ -143,3 +143,8 @@ body.mou-skin button.mf-pick.on, .mou-btn.ghost.mf-pick.on { border-color:var(--
 .mf-src input { margin-top:4px; width:18px; height:18px; accent-color:var(--accent); flex:none; }
 .mf-src span { min-width:0; } .mf-src b { display:block; font-size:.82rem; word-break:break-all; font-weight:600; }
 .mf-src small { display:block; color:var(--muted); font-size:.76rem; margin-top:3px; } .mf-src.off { opacity:.6; } .mf-src .mf-bad { color:var(--err); }
+details.mf-wiki > summary { cursor:pointer; list-style:none; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:10px 12px; background:var(--field); border:1px solid var(--line); border-radius:12px; margin:0; }
+details.mf-wiki > summary::-webkit-details-marker { display:none; }
+details.mf-wiki > summary::after { content:'▾'; color:var(--muted); transition:transform .15s; }
+details.mf-wiki[open] > summary::after { transform:rotate(180deg); }
+details.mf-wiki[open] > summary { margin-bottom:8px; }
