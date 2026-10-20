@@ -220,5 +220,44 @@ class TestDepotBibliotheque(unittest.TestCase):
         self.assertIn(("POST", "/command"), appels)
 
 
+class TestImportManuel(unittest.TestCase):
+    """Fichier choisi à la main dans les dossiers du serveur : lien (ou copie), jamais de déplacement hors du dossier de passage."""
+
+    def test_import(self):
+        import time
+        serie = test_engine.TMP / "series" / "Serie Import"
+        (serie / "s2").mkdir(parents=True, exist_ok=True)
+        (serie / "s2" / "Serie.Import.S02E01.1080p.mkv").write_bytes(b"deja")
+        source = test_engine.TMP / "telechargements" / "Serie.Import.2x02.FRENCH.mkv"
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_bytes(b"contenu" * 100)
+        invites.RACINES = (str(test_engine.TMP) + "/",)
+        appels = []
+
+        def faux(methode, chemin, corps=None):
+            appels.append((methode, chemin))
+            if chemin.startswith("/episode/"):
+                return {"seriesId": 5, "seasonNumber": 2, "episodeNumber": 2}
+            return {"path": str(serie)} if chemin == "/series/5" else {}
+        ancien = engine.sonarr
+        engine.sonarr = faux
+        try:
+            nom = invites.importer(70, str(source))
+            for _ in range(50):
+                if (serie / "s2" / nom).exists() and ("POST", "/command") in appels:
+                    break
+                time.sleep(0.1)
+            with self.assertRaises(ValueError):
+                invites.importer(70, str(source))                                    # déjà un fichier à cet endroit
+            with self.assertRaises(ValueError):
+                invites.importer(70, "/etc/passwd")                                  # hors des dossiers autorisés
+        finally:
+            engine.sonarr = ancien
+        self.assertTrue((serie / "s2" / nom).exists())
+        self.assertTrue(source.exists())                                              # l'original reste en place
+        self.assertEqual((serie / "s2" / nom).read_bytes(), source.read_bytes())
+        self.assertIn(("POST", "/command"), appels)
+
+
 if __name__ == "__main__":
     unittest.main()

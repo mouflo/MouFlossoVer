@@ -27,6 +27,7 @@ ETATS_FINAUX = ("pret", "annule", "range")
 
 VIDEO = (".mkv", ".mp4", ".avi", ".m4v")
 RX_SE = re.compile(r"[Ss](\d{1,2})[Ee](\d{1,3})(?!\d)")
+RACINES = ("/mnt/",)          # l import à la main n est permis que depuis ces dossiers
 BLOQUE_APRES = 4 * 3600          # source sans seed : on la remplace après 4 h
 MAX_REMPLACEMENTS = 5
 _VUS = {}                          # fichier déposé -> taille vue au passage précédent (pour attendre la fin de la copie)
@@ -119,6 +120,77 @@ def deposer(maintenant=False):
     if a_relire:
         threading.Thread(target=lambda: (time.sleep(25), engine.refresh()), daemon=True).start()
     return pris
+
+
+def importer(eid, src):
+    """Importe à la main un fichier choisi dans les dossiers du serveur pour l'épisode eid : il est placé au bon endroit (dossier de
+    saison de la série, ou de la série invitée) sous le nom habituel, puis Sonarr relit la série.
+    Le fichier d'origine n'est jamais déplacé, sauf s'il est dans le dossier de passage : on essaie un lien (instantané, sans
+    place en plus), sinon une copie. Renvoie tout de suite ; la copie éventuelle se fait en arrière-plan."""
+    real = os.path.realpath(src)
+    if not real.startswith(RACINES) or not os.path.isfile(real) or not real.lower().endswith(VIDEO):
+        raise ValueError("Choisis un fichier vidéo (.mkv, .mp4, .avi) dans un dossier du serveur.")
+    ep = engine.sonarr("GET", "/episode/%d" % eid)
+    serie = engine.sonarr("GET", "/series/%d" % ep["seriesId"])
+    sa, nb = ep["seasonNumber"], ep["episodeNumber"]
+    invite = engine.est_invite(serie["path"])
+    if invite:
+        cible, prefixe = os.path.join(serie["path"], "Season %02d" % sa), os.path.basename(serie["path"].rstrip("/"))
+    else:
+        cible = engine.season_dir(serie["path"], sa) or os.path.join(serie["path"], "s%d" % sa)
+        prefixe = engine.file_prefix(serie["path"])
+    base = os.path.basename(real)
+    m = RX_SE.search(base)
+    if m:
+        queue = re.sub(r"^[a-zA-Z](?=[.\s_-])", "", base[m.end():])
+    else:
+        queue = "." + re.sub(r"\s+", ".", os.path.splitext(base)[0]) + os.path.splitext(base)[1]
+    dest = os.path.join(cible, "%s.S%02dE%02d%s" % (prefixe, sa, nb, queue))
+    if os.path.exists(dest):
+        raise ValueError("Cet épisode a déjà un fichier à cet endroit : %s" % os.path.basename(dest))
+    os.makedirs(cible, exist_ok=True)
+    deplacer = real.startswith(engine.staging_dir().rstrip("/") + "/")
+    engine.IMPORTS[eid] = {"pct": 0}
+
+    def travail():
+        try:
+            if deplacer:
+                shutil.move(real, dest)
+            else:
+                try:
+                    os.link(real, dest)
+                except OSError:
+                    total = max(os.path.getsize(real), 1)
+                    fait = 0
+                    with open(real, "rb") as a, open(dest + ".part", "wb") as b:
+                        while True:
+                            bloc = a.read(8 * 1024 * 1024)
+                            if not bloc:
+                                break
+                            b.write(bloc)
+                            fait += len(bloc)
+                            engine.IMPORTS[eid]["pct"] = int(100 * fait / total)
+                    os.replace(dest + ".part", dest)
+            q = engine.file_dl().get(eid)
+            if q and q.get("id"):
+                engine.sonarr("DELETE", "/queue/%d?removeFromClient=false&blocklist=false" % q["id"])
+            engine.sonarr("POST", "/command", {"name": "RescanSeries", "seriesId": ep["seriesId"]})
+            for g in _guests():
+                if g.get("episodeId") == eid and g["status"] in ("recherche", "attente"):
+                    _maj(g["id"], message="Fichier importé : Sonarr le relit", next_try=0)
+            logger.info("Fichier importé à la main : %s -> %s", real, dest)
+        except Exception as ex:
+            logger.warning("Import de %s : %s", real, ex)
+            try:
+                os.remove(dest + ".part")
+            except OSError:
+                pass
+        finally:
+            engine.IMPORTS.pop(eid, None)
+        time.sleep(25)
+        engine.refresh()
+    threading.Thread(target=travail, daemon=True).start()
+    return os.path.basename(dest)
 
 
 def nettoyer_prets():

@@ -229,6 +229,48 @@ def api_telecharger(eid):
     return jsonify({"ok": True})
 
 
+@app.route("/api/fs/fichiers")
+def api_fs_fichiers():
+    """Explorateur de fichiers du serveur (lecture seule, sous /mnt) : dossiers et fichiers vidéo."""
+    from pathlib import Path
+    raw = request.args.get("path", "") or "/mnt"
+    try:
+        chemin = Path(raw).resolve()
+    except (OSError, RuntimeError):
+        return jsonify({"error": "Chemin invalide"}), 400
+    if not str(chemin).startswith("/mnt") or not chemin.is_dir():
+        chemin = Path("/mnt")
+    dossiers, fichiers = [], []
+    try:
+        for sub in sorted(chemin.iterdir(), key=lambda f: f.name.lower()):
+            if sub.name.startswith((".", "@", "#")) or sub.name in ("lost+found", "$RECYCLE.BIN", "System Volume Information", "eaDir"):
+                continue
+            try:
+                if sub.is_dir():
+                    dossiers.append(sub.name)
+                elif sub.suffix.lower() in (".mkv", ".mp4", ".avi", ".m4v"):
+                    fichiers.append({"name": sub.name, "size": sub.stat().st_size})
+            except OSError:
+                pass
+    except OSError as e:
+        return jsonify({"path": str(chemin), "parent": str(chemin.parent) if str(chemin) != "/mnt" else "", "dirs": [], "files": [],
+                        "note": "Dossier illisible : %s" % e.__class__.__name__})
+    return jsonify({"path": str(chemin), "parent": str(chemin.parent) if str(chemin) != "/mnt" else "", "dirs": dossiers, "files": fichiers})
+
+
+@app.route("/api/episodes/<int:eid>/importer", methods=["POST"])
+def api_importer(eid):
+    import invites
+    chemin = str((request.get_json(silent=True) or {}).get("path", ""))
+    try:
+        nom = invites.importer(eid, chemin)
+    except ValueError as ex:
+        return jsonify({"ok": False, "error": str(ex)}), 400
+    except Exception as ex:
+        return jsonify({"ok": False, "error": "Import impossible : %s" % ex}), 502
+    return jsonify({"ok": True, "nom": nom})
+
+
 @app.route("/api/episodes/<int:eid>/sources")
 def api_sources(eid):
     import invites

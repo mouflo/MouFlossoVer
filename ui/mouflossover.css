@@ -148,3 +148,8 @@ details.mf-wiki > summary::-webkit-details-marker { display:none; }
 details.mf-wiki > summary::after { content:'▾'; color:var(--muted); transition:transform .15s; }
 details.mf-wiki[open] > summary::after { transform:rotate(180deg); }
 details.mf-wiki[open] > summary { margin-bottom:8px; }
+.mf-chemin { font-size:.78rem; color:var(--muted); word-break:break-all; margin:6px 0; }
+.mf-nav { display:block; width:100%; text-align:left; margin-bottom:6px; font-size:.88rem; word-break:break-all; }
+body.mou-skin button.mf-nav { background:var(--field); color:var(--text); border:1px solid var(--line); border-radius:10px; padding:11px 12px; font-weight:500; }
+body.mou-skin button.mf-nav:hover { background:var(--field); }
+body.mou-skin button.mf-nav.mf-fichier { color:var(--accent); } body.mou-skin button.mf-nav.mf-fichier.on { background:var(--accent); border-color:var(--accent); color:#fff; }

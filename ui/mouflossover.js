@@ -230,6 +230,43 @@
     toast(r.ok ? 'Téléchargement lancé avec cette version.' : (r.error || 'Échec'), r.ok ? 'ok' : 'err'); load(false);
   }
 
+  // Importer à la main un fichier choisi dans les dossiers du serveur (on navigue, sans rien taper)
+  async function importer(titre, eid) {
+    var depart = '/mnt';
+    try { depart = localStorage.getItem('mf-import-dir') || '/mnt'; } catch (e) {}
+    var choix = null, chemin = depart;
+    var info = h('p', {class: 'mou-msub'}, 'Aucun fichier choisi.'), liste = h('div', {class: 'mf-fix'}), tete = h('div', {class: 'mf-chemin'});
+    function go(p) {
+      api('/api/fs/fichiers?path=' + encodeURIComponent(p)).then(function (r) {
+        if (r.error) { toast(r.error, 'err'); return; }
+        chemin = r.path;
+        try { localStorage.setItem('mf-import-dir', chemin); } catch (e) {}
+        tete.textContent = '📁 ' + chemin;
+        var lignes = [];
+        if (r.parent) lignes.push(h('button', {type: 'button', class: 'mf-nav', onclick: function () { go(r.parent); }}, '⬆️ Dossier parent'));
+        r.dirs.forEach(function (d) { lignes.push(h('button', {type: 'button', class: 'mf-nav', onclick: function () { go(chemin.replace(/\/$/, '') + '/' + d); }}, '📁 ' + d)); });
+        r.files.forEach(function (f) {
+          var chem = chemin.replace(/\/$/, '') + '/' + f.name;
+          lignes.push(h('button', {type: 'button', class: 'mf-nav mf-fichier' + (choix === chem ? ' on' : ''), onclick: function (ev) {
+            choix = chem; info.textContent = 'Choisi : ' + f.name + ' (' + (f.size / 1073741824).toFixed(1).replace('.', ',') + ' Go)';
+            liste.querySelectorAll('.mf-fichier.on').forEach(function (x) { x.classList.remove('on'); }); ev.currentTarget.classList.add('on');
+          }}, '🎞️ ' + f.name + ' · ' + (f.size / 1073741824).toFixed(1).replace('.', ',') + ' Go'));
+        });
+        if (!lignes.length || (lignes.length === 1 && r.parent)) lignes.push(h('p', {class: 'mou-msub'}, 'Aucun dossier ni fichier vidéo ici.'));
+        liste.replaceChildren.apply(liste, lignes);
+      });
+    }
+    go(depart);
+    var body = h('div', {}, h('p', {class: 'mou-msub'}, "Navigue dans les dossiers du serveur et touche le fichier de l'épisode. Il sera rangé au bon endroit sous le bon nom ; ton fichier d'origine reste en place (lien ou copie), sauf s'il est dans le dossier de passage."), tete, liste, info);
+    while (true) {
+      if (!await dlg('Importer un fichier pour ' + titre, body, 'Importer ce fichier')) return;
+      if (choix) break;
+      toast("Touche d'abord un fichier dans la liste.", 'err');
+    }
+    var r = await post('/api/episodes/' + eid + '/importer', {path: choix});
+    toast(r.ok ? 'Import lancé : ' + r.nom : (r.error || 'Échec'), r.ok ? 'ok' : 'err'); load(false);
+  }
+
   // Crossover décrit à la main (quand la détection automatique n'a rien vu)
   async function ajouterManuel() {
     var rep = await api('/api/series');
@@ -326,7 +363,8 @@
             toast(r.ok ? 'Recherche lancée chez vos indexeurs : « Actualiser » quand il sera téléchargé.' : (r.error || 'Échec'), r.ok ? 'ok' : 'err');
             if (!r.ok) b.disabled = false; else b.textContent = '⏳ Recherche lancée';
           }}, '⬇️ Télécharger cet épisode') : null,
-          (!p.hasFile && p.source !== 'invite' && !/Invites/i.test(p.path || '')) ? h('button', {type: 'button', class: 'mou-btn ghost small mf-dl', onclick: function () { sources(p.series + ' S' + pad(p.season) + 'E' + pad(p.ep), p.episodeId); }}, '🔎 Choisir la version') : null));
+          (!p.hasFile && p.source !== 'invite' && !/Invites/i.test(p.path || '')) ? h('button', {type: 'button', class: 'mou-btn ghost small mf-dl', onclick: function () { sources(p.series + ' S' + pad(p.season) + 'E' + pad(p.ep), p.episodeId); }}, '🔎 Choisir la version') : null,
+          (!p.hasFile && p.source !== 'invite' && !/Invites/i.test(p.path || '')) ? h('button', {type: 'button', class: 'mou-btn ghost small mf-dl', onclick: function () { importer(p.series + ' S' + pad(p.season) + 'E' + pad(p.ep), p.episodeId); }}, '📂 Importer un fichier') : null));
     });
     var issues = [];
     c.blockers.forEach(function (b) { var e = explainBlocker(b); issues.push(h('div', {class: 'mf-issue bad'}, h('b', {}, e.icon + ' ' + e.t), e.d ? h('p', {}, e.d) : null, e.files.length ? h('ul', {}, e.files.map(function (f) { return h('li', {}, f); })) : null)); });
@@ -350,7 +388,8 @@
       return h('div', {class: 'mf-issue'}, h('b', {}, '📥 Épisode invité : ' + g.title + ' S' + pad(g.season) + 'E' + pad(g.episode)),
         h('p', {}, (etapes[g.status] || g.status) + ' — ' + (g.message || '')),
         (g.status !== 'pret' && g.status !== 'range') ? h('p', {class: 'mf-note'}, 'Tu as déjà le fichier ? Dépose-le tel quel dans le dossier de passage (son nom doit contenir S' + pad(g.season) + 'E' + pad(g.episode) + ') : il sera reconnu et rangé tout seul.') : null,
-        h('div', {class: 'mf-actions'}, (g.status !== 'pret' && g.status !== 'range') && g.episodeId ? h('button', {type: 'button', class: 'mou-btn ghost small', onclick: function () { sources(g.title + ' S' + pad(g.season) + 'E' + pad(g.episode), g.episodeId); }}, '🔎 Choisir la version') : null,
+        h('div', {class: 'mf-actions'}, (g.status !== 'pret' && g.status !== 'range') && g.episodeId ? h('button', {type: 'button', class: 'mou-btn ghost small', onclick: function () { importer(g.title + ' S' + pad(g.season) + 'E' + pad(g.episode), g.episodeId); }}, '📂 Importer un fichier') : null,
+          (g.status !== 'pret' && g.status !== 'range') && g.episodeId ? h('button', {type: 'button', class: 'mou-btn ghost small', onclick: function () { sources(g.title + ' S' + pad(g.season) + 'E' + pad(g.episode), g.episodeId); }}, '🔎 Choisir la version') : null,
           (g.status !== 'pret' && g.status !== 'range') ? h('button', {type: 'button', class: 'mou-btn ghost small', onclick: async function () { var r = await post('/api/invites/deposer'); toast(r.pris ? r.pris + ' fichier(s) déposé(s) reconnu(s) et rangé(s).' : 'Aucun fichier déposé à reconnaître pour l\'instant.', r.pris ? 'ok' : 'err'); load(false); }}, '📂 Chercher un fichier déposé') : null,
           (g.status !== 'pret' && g.status !== 'range') ? h('button', {type: 'button', class: 'mou-btn ghost small', onclick: async function () { await post('/api/invites/' + g.id + '/retry'); toast('Nouvel essai lancé', 'ok'); load(false); }}, 'Réessayer') : null,
           (g.status !== 'pret' && g.status !== 'range') ? h('button', {type: 'button', class: 'mou-btn ghost small', onclick: async function () { await post('/api/invites/' + g.id + '/cancel'); load(false); }}, 'Annuler la demande') : null));

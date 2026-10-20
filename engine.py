@@ -475,6 +475,8 @@ def wiki_sources(c):
     return out[:6]
 
 
+IMPORTS = {}          # épisode -> avancement d'un fichier importé à la main (copie en cours)
+
 _QCACHE = {"t": 0, "d": {}}
 
 
@@ -498,6 +500,8 @@ def dl_etat(eid, a_fichier):
     """Phrase d'état d'un épisode demandé mais pas encore là (None si rien à dire)."""
     if a_fichier:
         return None
+    if eid in IMPORTS:
+        return "Import du fichier en cours : %d %%" % IMPORTS[eid].get("pct", 0)
     q = file_dl().get(eid)
     if q:
         if q["status"] == "completed":
